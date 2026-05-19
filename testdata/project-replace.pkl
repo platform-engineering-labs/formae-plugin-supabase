@@ -1,0 +1,25 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — replace SUPABASE::Platform::Project.
+// Changing `region` is createOnly so formae destroys + recreates.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.Project {
+    label = "plugin-sdk-test-project"
+    name = "formae-sdk-test-\(v.testRunID)"
+    organizationId = v.organizationID
+    region = v.replacementRegion                       // CHANGED — triggers replacement
+    dbPass = v.dbPass
+    plan = "free"
+  }
+}

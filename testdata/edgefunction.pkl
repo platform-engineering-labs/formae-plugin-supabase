@@ -1,0 +1,26 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — create SUPABASE::Functions::EdgeFunction with inline body.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.EdgeFunction {
+    label = "plugin-sdk-test-edgefunction"
+    projectRef = v.projectRef
+    slug = "sdk-test-\(v.testRunID)"
+    name = "SDK Test \(v.testRunID)"
+    body = """
+      Deno.serve(() => new Response("hello from conformance test"))
+      """
+    verify_jwt = true
+  }
+}

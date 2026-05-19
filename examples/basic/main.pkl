@@ -1,0 +1,42 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Basic example — manage one Supabase Edge Function on an existing project.
+//
+// Setup:
+//   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//   formae apply --mode reconcile --watch examples/basic/main.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@supabase/supabase.pkl"
+
+local projectRef = read("env:SUPABASE_PROJECT_REF")
+local orgID      = read("env:SUPABASE_ORGANIZATION_ID")
+
+forma {
+  new formae.Stack {
+    label = "supabase-demo"
+    description = "Basic Supabase plugin example"
+  }
+
+  new formae.Target {
+    label = "supabase-target"
+    config = new supabase.Config {
+      organizationId = orgID
+    }
+  }
+
+  // One Edge Function deployed from inline source.
+  new supabase.EdgeFunction {
+    label = "hello-world"
+    projectRef = projectRef
+    slug = "hello-world"
+    name = "Hello World"
+    body = """
+      Deno.serve(() => new Response("Hello from formae!"))
+      """
+    verify_jwt = true
+  }
+}

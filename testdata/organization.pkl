@@ -1,0 +1,22 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — create SUPABASE::Platform::Organization.
+// Update and Delete are unsupported by the Supabase Management API; the
+// plugin reports no-op success for them, so no update/replace fixture exists.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.Organization {
+    label = "plugin-sdk-test-organization"
+    name = "formae-sdk-org-\(v.testRunID)"
+  }
+}

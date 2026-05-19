@@ -1,0 +1,29 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — update SUPABASE::Config::NetworkRestriction.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.NetworkRestriction {
+    label = "plugin-sdk-test-network-restriction"
+    projectRef = v.projectRef
+    settings = new Mapping {
+      ["dbAllowedCidrs"] = new Listing {
+        "198.51.100.0/24"                                // CHANGED
+        "203.0.113.0/24"                                 // ADDED
+      }
+      ["dbAllowedCidrsV6"] = new Listing {
+        "2001:db8::/32"
+      }
+    }
+  }
+}

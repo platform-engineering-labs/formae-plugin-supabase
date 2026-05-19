@@ -1,0 +1,25 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — apply SUPABASE::Config::AuthSettings to an existing project.
+// Singleton: no Create/Delete on the server — plugin upserts via PATCH.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.AuthSettings {
+    label = "plugin-sdk-test-auth-settings"
+    projectRef = v.projectRef
+    settings = new Mapping {
+      ["site_url"] = "https://sdk-test-\(v.testRunID).example"
+      ["mailer_autoconfirm"] = true
+    }
+  }
+}

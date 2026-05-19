@@ -1,0 +1,24 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — create SUPABASE::Platform::Branch on an existing project.
+// SUPABASE_PROJECT_REF must point at a project on a paid plan (branches are
+// not available on free).
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.Branch {
+    label = "plugin-sdk-test-branch"
+    parentProjectRef = v.projectRef
+    branch_name = "sdk-test-\(v.testRunID)"
+    persistent = false
+  }
+}
