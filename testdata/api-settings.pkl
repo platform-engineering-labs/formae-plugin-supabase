@@ -1,0 +1,25 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — apply SUPABASE::Config::APISettings (PostgREST config)
+// to an existing project.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.APISettings {
+    label = "plugin-sdk-test-api-settings"
+    projectRef = v.projectRef
+    settings = new Mapping {
+      ["db_schema"] = "public"
+      ["max_rows"] = 1000
+    }
+  }
+}

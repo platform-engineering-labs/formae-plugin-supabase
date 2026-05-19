@@ -1,0 +1,28 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — create SUPABASE::Platform::Project.
+//
+// WARNING: Project creation provisions real Supabase infrastructure that the
+// account is billed for and takes ~2–3 minutes. Run sparingly. The conformance
+// harness needs TIMEOUT=15 (or higher) for this test.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.Project {
+    label = "plugin-sdk-test-project"
+    name = "formae-sdk-test-\(v.testRunID)"
+    organizationId = v.organizationID
+    region = v.region
+    dbPass = v.dbPass
+    plan = "free"
+  }
+}

@@ -1,0 +1,25 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — apply SUPABASE::Config::DatabaseSettings to an existing
+// project. Note: this endpoint uses PUT (not PATCH); the singleton helper
+// dispatches the right method.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.DatabaseSettings {
+    label = "plugin-sdk-test-database-settings"
+    projectRef = v.projectRef
+    settings = new Mapping {
+      ["statement_timeout"] = "8s"
+    }
+  }
+}

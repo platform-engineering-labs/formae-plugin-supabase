@@ -1,0 +1,336 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+/// Supabase Management API resource definitions.
+///
+/// See docs/RESOURCES.md for the full roadmap. Only resources implemented
+/// in supabase.go appear here.
+module supabase
+
+import "@formae/formae.pkl"
+
+// =============================================================================
+// Target configuration
+// =============================================================================
+
+/// Deployment-level config for a Supabase target.
+///
+/// Credentials live in environment variables (SUPABASE_ACCESS_TOKEN), never
+/// in the forma — same pattern as formae-plugin-sftp.
+open class Config {
+    hidden fixed type: String = "SUPABASE"
+
+    /// Default organization for Project creation when not specified per resource.
+    organizationId: String?
+
+    /// Override base URL. Defaults to https://api.supabase.com.
+    baseUrl: String? = null
+
+    fixed Type: String = type
+    fixed OrganizationId: String? = organizationId
+    fixed BaseUrl: String? = baseUrl
+}
+
+// =============================================================================
+// SUPABASE::Platform::Project
+// =============================================================================
+
+/// A Supabase project. Maps to POST /v1/projects.
+///
+/// Project create is async; the plugin waits for ACTIVE_HEALTHY via Status().
+@formae.ResourceHint {
+    type = "SUPABASE::Platform::Project"
+    identifier = "$.id"
+    discoverable = true
+}
+class Project extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Platform::Project"
+
+    /// Project display name.
+    @formae.FieldHint { requiredOnCreate = true }
+    name: String
+
+    /// Organization slug or id that owns the project.
+    /// Immutable after creation.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    organizationId: String
+
+    /// AWS region (e.g. "us-east-1", "eu-west-1").
+    /// Immutable after creation.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    region: String
+
+    /// Initial Postgres password. >= 8 chars.
+    /// Send-only — never returned by the API.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+        writeOnly = true
+    }
+    dbPass: String
+
+    /// Pricing plan ("free", "pro", "team", "enterprise").
+    @formae.FieldHint {}
+    plan: String? = "free"
+
+    /// Compute instance size (e.g. "micro", "small", "medium").
+    @formae.FieldHint {}
+    desiredInstanceSize: String? = null
+}
+
+// =============================================================================
+// SUPABASE::Platform::Branch
+// =============================================================================
+
+/// A preview branch on a Supabase project.
+/// Async — plugin polls until status reaches FUNCTIONS_DEPLOYED / MIGRATIONS_PASSED.
+@formae.ResourceHint {
+    type = "SUPABASE::Platform::Branch"
+    identifier = "$.id"
+    discoverable = true
+}
+class Branch extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Platform::Branch"
+
+    /// Parent project reference. Immutable after creation.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    parentProjectRef: String
+
+    /// Branch name.
+    @formae.FieldHint { requiredOnCreate = true }
+    branch_name: String
+
+    /// Optional Git branch name to track.
+    @formae.FieldHint {}
+    git_branch: String?
+
+    /// Whether the branch is persistent.
+    @formae.FieldHint {}
+    persistent: Boolean? = false
+
+    /// Region for the branch's database. Immutable.
+    @formae.FieldHint { createOnly = true }
+    region: String?
+
+    /// Compute instance size for the branch.
+    @formae.FieldHint { createOnly = true }
+    desired_instance_size: String?
+}
+
+// =============================================================================
+// SUPABASE::Platform::Organization
+// =============================================================================
+
+/// A Supabase organization. Update/Delete are unsupported by the API.
+@formae.ResourceHint {
+    type = "SUPABASE::Platform::Organization"
+    identifier = "$.slug"
+    discoverable = true
+}
+class Organization extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Platform::Organization"
+
+    @formae.FieldHint { requiredOnCreate = true }
+    name: String
+}
+
+// =============================================================================
+// SUPABASE::Auth::APIKey
+// =============================================================================
+
+/// Project-scoped API key (publishable or secret).
+@formae.ResourceHint {
+    type = "SUPABASE::Auth::APIKey"
+    identifier = "$.id"
+    discoverable = true
+}
+class APIKey extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Auth::APIKey"
+
+    /// Parent project reference. Immutable.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    projectRef: String
+
+    /// "publishable" or "secret". Immutable.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    apikey_type: String
+
+    /// Short key name (lowercase, snake_case, 4–64 chars).
+    @formae.FieldHint { requiredOnCreate = true }
+    name: String
+
+    /// Optional description.
+    @formae.FieldHint {}
+    description: String?
+}
+
+// =============================================================================
+// SUPABASE::Functions::EdgeFunction
+// =============================================================================
+
+/// A Supabase Edge Function deployed from an inline body.
+@formae.ResourceHint {
+    type = "SUPABASE::Functions::EdgeFunction"
+    identifier = "$.slug"
+    discoverable = true
+}
+class EdgeFunction extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Functions::EdgeFunction"
+
+    /// Parent project. Immutable.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    projectRef: String
+
+    /// URL-safe slug. Immutable.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    slug: String
+
+    /// Display name.
+    @formae.FieldHint { requiredOnCreate = true }
+    name: String
+
+    /// Inline TypeScript/JavaScript source body (Deno).
+    @formae.FieldHint { requiredOnCreate = true }
+    body: String
+
+    /// Whether to verify the JWT before invocation.
+    @formae.FieldHint {}
+    verify_jwt: Boolean? = true
+}
+
+// =============================================================================
+// SUPABASE::Functions::Secret
+// =============================================================================
+
+/// One Edge Function secret. Values are write-only.
+@formae.ResourceHint {
+    type = "SUPABASE::Functions::Secret"
+    identifier = "$.name"
+    discoverable = true
+}
+class Secret extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Functions::Secret"
+
+    /// Parent project. Immutable.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    projectRef: String
+
+    /// Secret name. Must not start with SUPABASE_. Immutable.
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    name: String
+
+    /// Secret value. Send-only.
+    @formae.FieldHint {
+        requiredOnCreate = true
+        writeOnly = true
+    }
+    value: String
+}
+
+// =============================================================================
+// Project-singleton configuration resources
+// =============================================================================
+
+/// Auth configuration. Settings are opaque JSON — see Supabase API docs for
+/// the full UpdateAuthConfigBody shape.
+@formae.ResourceHint {
+    type = "SUPABASE::Config::AuthSettings"
+    identifier = "$.projectRef"
+}
+class AuthSettings extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Config::AuthSettings"
+
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    projectRef: String
+
+    /// Free-form settings map. Maps to UpdateAuthConfigBody.
+    @formae.FieldHint {}
+    settings: Mapping<String, Any>?
+}
+
+/// PostgREST (Data API) configuration.
+@formae.ResourceHint {
+    type = "SUPABASE::Config::APISettings"
+    identifier = "$.projectRef"
+}
+class APISettings extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Config::APISettings"
+
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    projectRef: String
+
+    @formae.FieldHint {}
+    settings: Mapping<String, Any>?
+}
+
+/// Postgres database configuration (max connections, shared buffers, etc).
+@formae.ResourceHint {
+    type = "SUPABASE::Config::DatabaseSettings"
+    identifier = "$.projectRef"
+}
+class DatabaseSettings extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Config::DatabaseSettings"
+
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    projectRef: String
+
+    @formae.FieldHint {}
+    settings: Mapping<String, Any>?
+}
+
+/// Network restriction CIDR allowlist.
+@formae.ResourceHint {
+    type = "SUPABASE::Config::NetworkRestriction"
+    identifier = "$.projectRef"
+}
+class NetworkRestriction extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Config::NetworkRestriction"
+
+    @formae.FieldHint {
+        createOnly = true
+        requiredOnCreate = true
+    }
+    projectRef: String
+
+    /// Payload follows NetworkRestrictionsRequest:
+    /// { "dbAllowedCidrs": [...], "dbAllowedCidrsV6": [...] }.
+    @formae.FieldHint {}
+    settings: Mapping<String, Any>?
+}

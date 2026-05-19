@@ -1,0 +1,24 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — update SUPABASE::Auth::APIKey.
+// Mutates `name` and `description`. `projectRef` and `apikey_type` are createOnly.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.APIKey {
+    label = "plugin-sdk-test-apikey"
+    projectRef = v.projectRef
+    apikey_type = "secret"
+    name = "sdk_test_\(v.testRunID)_rotated"           // CHANGED
+    description = "Plugin SDK conformance — rotated"   // CHANGED
+  }
+}

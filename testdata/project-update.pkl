@@ -1,0 +1,25 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — update SUPABASE::Platform::Project.
+// Mutates `name` only; `organizationId`, `region`, `dbPass` are createOnly.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.Project {
+    label = "plugin-sdk-test-project"
+    name = "formae-sdk-test-\(v.testRunID)-updated"   // CHANGED
+    organizationId = v.organizationID
+    region = v.region
+    dbPass = v.dbPass
+    plan = "free"
+  }
+}

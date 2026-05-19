@@ -1,0 +1,27 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Conformance test — update SUPABASE::Functions::EdgeFunction.
+// Changes the body + flips verify_jwt. Slug + projectRef are createOnly.
+
+amends "@formae/forma.pkl"
+import "@supabase/supabase.pkl"
+
+import "./config/vars.pkl" as v
+
+forma {
+  v.stack
+  v.target
+
+  new supabase.EdgeFunction {
+    label = "plugin-sdk-test-edgefunction"
+    projectRef = v.projectRef
+    slug = "sdk-test-\(v.testRunID)"
+    name = "SDK Test \(v.testRunID) — updated"          // CHANGED
+    body = """
+      Deno.serve(() => new Response("hello UPDATED"))
+      """                                                // CHANGED
+    verify_jwt = false                                   // CHANGED
+  }
+}

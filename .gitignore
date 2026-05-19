@@ -1,0 +1,57 @@
+# Build artifacts
+bin/
+dist/
+
+# Go
+*.exe
+*.exe~
+*.dll
+*.so
+*.dylib
+*.test
+*.out
+vendor/
+
+# Test coverage
+coverage.out
+coverage.html
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# OS
+.DS_Store
+Thumbs.db
+
+# PKL
+.pkl-cache/
+*.pkl-expected.pcf
+PklProject.deps.json
+
+# Generated at build time from formae-plugin.pkl
+schema/pkl/VERSION
+
+# Worktrees
+.worktrees/
+
+# Conformance scratch
+*.test.log
+/tmp-*.log
+
+# Claude Code
+CLAUDE.md
+.claude/
+
+# Secrets — NEVER commit (Supabase PAT lives here)
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+
+# Editor scratch
+*.tmp

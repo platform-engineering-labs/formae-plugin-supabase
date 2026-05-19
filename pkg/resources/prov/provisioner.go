@@ -1,0 +1,40 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+
+// Package prov defines the Provisioner interface that every Supabase resource
+// type implements, plus shared helpers (native-id parsing, error mapping,
+// canned failure results).
+//
+// The shape mirrors formae-plugin-k8s's pkg/resources/prov: one interface,
+// thin helpers, no behavior. Per-resource state lives in the struct types
+// declared in pkg/resources/{platform,auth,functions,config}/*.
+package prov
+
+import (
+	"context"
+	"encoding/json"
+
+	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
+)
+
+// Provisioner is the per-resource-type contract. Every registered resource
+// supplies an implementation; the main plugin dispatches by ResourceType.
+type Provisioner interface {
+	Create(ctx context.Context, req *resource.CreateRequest) (*resource.CreateResult, error)
+	Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error)
+	Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error)
+	Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error)
+	Status(ctx context.Context, req *resource.StatusRequest) (*resource.StatusResult, error)
+	List(ctx context.Context, req *resource.ListRequest) (*resource.ListResult, error)
+}
+
+// MustMarshal serialises a value to JSON, panicking on impossible inputs.
+// Reserved for shapes we own — never user data.
+func MustMarshal(v any) json.RawMessage {
+	b, err := json.Marshal(v)
+	if err != nil {
+		panic("prov: marshal failed: " + err.Error())
+	}
+	return b
+}
