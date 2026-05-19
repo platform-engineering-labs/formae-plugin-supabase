@@ -148,6 +148,17 @@ class Organization extends formae.Resource {
 // SUPABASE::Auth::APIKey
 // =============================================================================
 
+/// Resolvable handle for `SUPABASE::Auth::APIKey` outputs. Reference
+/// these from other resources to wire credentials across plugins, e.g.
+///   stringData["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = anonKey.res.apiKey
+open class APIKeyResolvable extends formae.Resolvable {
+    hidden type = "SUPABASE::Auth::APIKey"
+
+    hidden id:     APIKeyResolvable = (this) { property = "id" }
+    hidden apiKey: APIKeyResolvable = (this) { property = "apiKey" }
+    hidden prefix: APIKeyResolvable = (this) { property = "prefix" }
+}
+
 /// Project-scoped API key (publishable or secret).
 @formae.ResourceHint {
     type = "SUPABASE::Auth::APIKey"
@@ -156,6 +167,12 @@ class Organization extends formae.Resource {
 }
 class APIKey extends formae.Resource {
     fixed hidden type: String = "SUPABASE::Auth::APIKey"
+
+    local parent = this
+    hidden res: APIKeyResolvable = new {
+        label = parent.label
+        stack = parent.stack?.label
+    }
 
     /// Parent project reference. Immutable.
     @formae.FieldHint {
