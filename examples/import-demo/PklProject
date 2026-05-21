@@ -1,0 +1,14 @@
+// PklProject for the Supabase import demo.
+//
+// Run `pkl project resolve` inside this directory after install/update of
+// the supabase plugin.
+
+amends "pkl:Project"
+
+dependencies {
+  ["supabase"] = import("../../schema/pkl/PklProject")
+
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
+  }
+}
