@@ -31,11 +31,11 @@ import "@formae/formae.pkl"
 import "@supabase/supabase.pkl"
 
 import "@k8s/k8s.pkl"
-import "@k8s/v1.32/core/Namespace.pkl" as ns
-import "@k8s/v1.32/core/Secret.pkl" as secret
-import "@k8s/v1.32/core/Service.pkl" as svc
-import "@k8s/v1.32/apps/Deployment.pkl" as dep
-import "@k8s/v1.32/networking/Ingress.pkl" as ing
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/Secret.pkl" as secret
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/networking/Ingress.pkl" as ing
 
 local supabaseOrg     = read("env:SUPABASE_ORGANIZATION_ID")
 local supabaseProject = read("env:SUPABASE_PROJECT_REF")
@@ -130,10 +130,11 @@ forma {
         }
         type = "Opaque"
         stringData {
-            ["NEXT_PUBLIC_SUPABASE_URL"]      = "https://\(supabaseProject).supabase.co"
-            // Cross-plugin DAG: formae resolves `anonKey.apiKey` at apply
-            // time after the supabase.APIKey resource above finishes Create.
-            ["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = supabaseAnonKey
+            ["NEXT_PUBLIC_SUPABASE_URL"]             = "https://\(supabaseProject).supabase.co"
+            // Cross-plugin DAG would let formae resolve `anonKey.res.apiKey`
+            // at apply time, but k8s Secret.stringData is `Mapping<String,
+            // String>` (strict) so we thread the value via env for now.
+            ["NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY"] = supabaseAnonKey
         }
     }
 

@@ -17,6 +17,8 @@
 KIND_CLUSTER ?= formae-test
 IMAGE        ?= k8s-supabase-demo:latest
 NAMESPACE    ?= supabase-demo
+K8S_PLUGIN_VERSION ?= 0.1.2
+K8S_LOCAL_PKLPROJECT := /opt/pel/formae/plugins/k8s/v$(K8S_PLUGIN_VERSION)/schema/pkl/main/PklProject
 
 # Read SUPABASE_* + DEMO_IMAGE from the repo-root .env if present.
 ENV_FILE := ../../.env
@@ -25,7 +27,7 @@ include $(ENV_FILE)
 export
 endif
 
-.PHONY: demo demo-prepare image load apply agent-restart port-forward destroy clean
+.PHONY: demo demo-prepare image load apply agent-restart port-forward destroy clean pkl-local pkl-hub
 
 ## demo: end-to-end — build, load, apply, then print the local URL
 demo: image load apply
@@ -37,7 +39,7 @@ demo: image load apply
 ## demo-prepare: everything EXCEPT the apply. Writes .demo.env for sourcing.
 ## Use this before a live demo so the only thing the audience sees is
 ## `formae apply forma.pkl`.
-demo-prepare: image load agent-restart
+demo-prepare: pkl-local image load agent-restart
 	@test -n "$$SUPABASE_ACCESS_TOKEN"    || (echo "SUPABASE_ACCESS_TOKEN unset"; exit 1)
 	@test -n "$$SUPABASE_ORGANIZATION_ID" || (echo "SUPABASE_ORGANIZATION_ID unset"; exit 1)
 	@test -n "$$SUPABASE_PROJECT_REF"     || (echo "SUPABASE_PROJECT_REF unset"; exit 1)
@@ -106,6 +108,24 @@ port-forward:
 destroy:
 	-formae destroy --yes forma.pkl
 
+## pkl-local: swap k8s dep to local install (needed while k8s isn't on
+## the hub). Resolves deps, then restores hub URL on `pkl-hub`.
+pkl-local:
+	@test -f "$(K8S_LOCAL_PKLPROJECT)" \
+	    || (echo "No local k8s plugin at $(K8S_LOCAL_PKLPROJECT) — install it first"; exit 1)
+	@if grep -q 'hub.platform.engineering/plugins/k8s' PklProject; then \
+	    perl -i -0pe 's|  \["k8s"\]\s*\{[^}]*\}|  ["k8s"] = import("$(K8S_LOCAL_PKLPROJECT)")|s' PklProject; \
+	    echo "Swapped PklProject k8s dep to local: $(K8S_LOCAL_PKLPROJECT)"; \
+	fi
+	@rm -f PklProject.deps.json
+	@pkl project resolve >/dev/null
+
+## pkl-hub: restore the canonical hub URL (commits-clean state).
+pkl-hub:
+	@git checkout -- PklProject 2>/dev/null || true
+	rm -f PklProject.deps.json
+	@echo "PklProject restored to hub URL (run 'git diff PklProject' to confirm)."
+
 ## clean: remove built artifacts (image stays in docker / kind)
 clean:
-	rm -rf app/node_modules app/.next PklProject.deps.json
+	rm -rf app/node_modules app/.next PklProject.deps.json .demo.env

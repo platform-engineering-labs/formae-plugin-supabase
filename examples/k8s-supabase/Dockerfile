@@ -1,19 +1,43 @@
 # © 2026 Platform Engineering Labs Inc.
 # SPDX-License-Identifier: Apache-2.0
 #
-# Tiny demo container for examples/k8s-supabase/.
-# Build + push to a registry your cluster can pull from:
-#   docker build -t ghcr.io/YOUR-ORG/k8s-supabase-demo:latest .
-#   docker push ghcr.io/YOUR-ORG/k8s-supabase-demo:latest
+# Next.js (vercel/next.js examples/with-supabase) multi-stage build.
+# Result is the standalone Next.js server in a slim node:alpine runtime.
+#
+# Build + push to a registry your cluster can pull from, or build locally
+# and load into kind:
+#   docker build -t k8s-supabase-demo:latest .
+#   kind load docker-image k8s-supabase-demo:latest --name <cluster>
 
-FROM golang:1.25-alpine AS build
+FROM node:24-alpine AS deps
 WORKDIR /src
-COPY app/ ./
-RUN go mod init demo 2>/dev/null || true \
- && CGO_ENABLED=0 GOOS=linux go build -ldflags="-s -w" -o /out/demo .
+COPY app/package.json app/package-lock.json* ./
+RUN npm ci --no-audit --no-fund
 
-FROM gcr.io/distroless/static:nonroot
-COPY --from=build /out/demo /demo
-USER nonroot
+FROM node:24-alpine AS build
+WORKDIR /src
+COPY --from=deps /src/node_modules ./node_modules
+COPY app/ ./
+# Bake placeholder strings that entrypoint.sh rewrites at runtime with
+# the real values from the k8s Secret. Keeps the image portable across
+# Supabase projects.
+ENV NEXT_PUBLIC_SUPABASE_URL=https://placeholder.supabase.co
+ENV NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_PLACEHOLDER_KEY_DO_NOT_USE_IN_PROD
+RUN npm run build
+
+FROM node:24-alpine AS runtime
+WORKDIR /app
+ENV NODE_ENV=production
+ENV PORT=8080
+ENV HOSTNAME=0.0.0.0
+
+# next.js standalone output already contains node_modules + server.js
+COPY --from=build /src/.next/standalone ./
+COPY --from=build /src/.next/static ./.next/static
+
+COPY entrypoint.sh /entrypoint.sh
+
 EXPOSE 8080
-ENTRYPOINT ["/demo"]
+# Run as root so the entrypoint can sed-rewrite the built bundle. The
+# Next.js server itself drops nothing privileged.
+ENTRYPOINT ["/entrypoint.sh"]

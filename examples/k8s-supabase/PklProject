@@ -1,17 +1,22 @@
 // PklProject for the k8s-supabase example forma.
 //
-// Resolves the supabase schema from the workspace and the k8s schema from
-// the locally-installed plugin (~/.pel/formae/plugins/k8s/...).
-// Adjust paths if your k8s plugin lives elsewhere.
+// Pulls the supabase plugin schema from the workspace (sibling
+// directory) and the k8s plugin schema from the formae hub.
 
 amends "pkl:Project"
 
 dependencies {
   ["supabase"] = import("../../schema/pkl/PklProject")
 
-  // Reference the locally-installed k8s plugin schema. Bump the version
-  // segment when you upgrade the k8s plugin.
-  ["k8s"] = import("../../../../../../.pel/formae/plugins/k8s/v0.1.1/schema/pkl/PklProject")
+  ["k8s"] {
+    // Heads-up: at the time this file was written the k8s plugin was
+    // not yet published to the hub (every k8s@X.Y.Z.zip returned 404).
+    // If `pkl project resolve` fails for this dep, run `make pkl-local`
+    // (or swap by hand to:
+    //   ["k8s"] = import("/opt/pel/formae/plugins/k8s/v0.1.2/schema/pkl/main/PklProject")
+    // ).
+    uri = "package://hub.platform.engineering/plugins/k8s/schema/pkl/k8s/k8s@0.1.2"
+  }
 
   ["formae"] {
     uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
