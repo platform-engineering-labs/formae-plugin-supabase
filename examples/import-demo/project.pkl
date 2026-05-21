@@ -65,8 +65,11 @@ forma {
     settings = new Mapping {
       ["db_extra_search_path"] = "public, extensions"
       ["db_schema"] = "public,graphql_public"
-      ["jwt_secret"] = read("env:SUPABASE_JWT_SECRET")
       ["max_rows"] = 1000
+      // jwt_secret is omitted on purpose. Rewriting it would rotate
+      // every existing JWT — only set it via formae if you also intend
+      // to roll keys. Export SUPABASE_JWT_SECRET and uncomment to opt in.
+      // ["jwt_secret"] = read("env:SUPABASE_JWT_SECRET")
     }
     target = supabaseTarget.res
     stack = myStack.res
