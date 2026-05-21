@@ -50,6 +50,7 @@ CLAUDE.md
 .env
 .env.*
 !.env.example
+.demo.env
 *.pem
 *.key
 
