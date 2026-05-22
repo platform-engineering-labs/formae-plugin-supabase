@@ -22,11 +22,11 @@ import "@supabase/supabase.pkl" as supabase
 local supabaseProjectRef = read?("env:SUPABASE_PROJECT_REF") ?? "REDACTED_PROJECT_REF"
 
 forma {
-    local demoStack = new formae.Stack {
-        label = "supabase-call-demo"
-        description = "Live demo — single APISettings change"
-    }
-    demoStack
+    //local demoStack = new formae.Stack {
+    //    label = "supabase-call-demo"
+    //    description = "Live demo — single APISettings change"
+    //}
+    //demoStack
 
     local supabaseTarget = new formae.Target {
         label = "supabase-target"
@@ -36,15 +36,15 @@ forma {
     }
     supabaseTarget
 
-    new supabase.APISettings {
-        label = "demo-api-settings"
-        target = supabaseTarget.res
-        stack  = demoStack.res
-        projectRef = supabaseProjectRef
-        settings = new Mapping {
-            ["db_extra_search_path"] = "public, extensions"
-            ["db_schema"]            = "public,graphql_public"
-            ["max_rows"]             = 1000   // ← flip to 5000 for the live "change one thing" beat
-        }
-    }
+    //new supabase.APISettings {
+    //    label = "demo-api-settings"
+    //    target = supabaseTarget.res
+    //    stack  = demoStack.res
+    //    projectRef = supabaseProjectRef
+    //    settings = new Mapping {
+    //        ["db_extra_search_path"] = "public, extensions"
+    //        ["db_schema"]            = "public,graphql_public"
+    //        ["max_rows"]             = 1000   // ← flip to 5000 for the live "change one thing" beat
+    //    }
+    //}
 }

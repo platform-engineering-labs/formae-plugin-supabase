@@ -694,15 +694,15 @@ forma {
   }
 
   new supabase.Organization {
-    label = "redacted-org"
-    name = "redacted-org"
+    label = "redacted-org-name"
+    name = "redacted-org-name"
     target = supabaseTarget.res
     stack = myStack.res
   }
 
   new supabase.Organization {
-    label = "redacted-org"
-    name = "redacted-org"
+    label = "redacted-org-name"
+    name = "redacted-org-name"
     target = supabaseTarget.res
     stack = myStack.res
   }
