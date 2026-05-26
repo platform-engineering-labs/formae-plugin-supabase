@@ -10,7 +10,7 @@ Talks to the Supabase Management API at `https://api.supabase.com`.
 
 ## Supported Resources
 
-10 resource types across 4 namespaces. Every type implements full Create,
+11 resource types across 5 namespaces. Every type implements full Create,
 Read, Update, Delete, List + Status (async polling where applicable).
 
 Coverage versus the Supabase Management API (109 endpoints total):
@@ -47,6 +47,12 @@ Each singleton is keyed by project ref; payload is opaque `Mapping<String, Any>`
 | `SUPABASE::Config::DatabaseSettings` | `/v1/projects/{ref}/config/database/postgres` | PUT | `statement_timeout`, `max_connections`, shared buffers, etc. |
 | `SUPABASE::Config::NetworkRestriction` | `/v1/projects/{ref}/network-restrictions` | PATCH | `dbAllowedCidrs`, `dbAllowedCidrsV6` |
 
+### `SUPABASE::Database::*` — database tier
+
+| Resource | Endpoint | Method | Payload |
+|---|---|---|---|
+| `SUPABASE::Database::PoolerConfig` | `/v1/projects/{ref}/config/database/pooler` | PATCH | `default_pool_size` (0..3000), `pool_mode` ("transaction" \| "session"). GET returns array of pooler configs (one per database); plugin auto-selects the PRIMARY entry. |
+
 ### Discovery + extract
 
 All resources are `discoverable = true` (except the singletons, which surface via their parent project). `formae extract --schema-location local --query 'target:supabase-target' out.pkl` produces a complete PKL representation of an existing project — see [`examples/import-demo/`](examples/import-demo/).
@@ -59,7 +65,6 @@ Surface areas that exist in the Management API but are not yet modelled as `SUPA
 
 | Resource (planned) | API endpoint | Status |
 |---|---|---|
-| `SUPABASE::Database::PoolerConfig` | `/v1/projects/{ref}/config/database/pooler`, `/pgbouncer` | not started — singleton, PATCH-friendly |
 | `SUPABASE::Database::Backup` | `/v1/projects/{ref}/database/backups`, `/restore`, `/restore-pitr`, `/restore-point`, `/schedule`, `/undo` | not started — multiple verbs, async restore |
 | `SUPABASE::Database::Migration` | `/v1/projects/{ref}/database/migrations{,/{version}}` | not started |
 | `SUPABASE::Database::Webhook` | `/v1/projects/{ref}/database/webhooks/enable` | not started — toggle resource |
