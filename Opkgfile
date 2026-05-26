@@ -1,7 +1,7 @@
 /*
  * © 2026 Platform Engineering Labs Inc.
  *
- * SPDX-License-Identifier: FSL-1.1-ALv2
+ * SPDX-License-Identifier: Apache-2.0
  *
  * Orbital package manifest. The centralized build pipeline in
  * `formae-actions/.github/workflows/plugin-build.yml` consumes this when
