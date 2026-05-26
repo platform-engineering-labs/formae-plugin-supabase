@@ -175,10 +175,17 @@ More end-to-end examples in [`examples/`](examples/):
 ```bash
 make build               # build plugin binary
 make install             # build + install to ~/.pel/formae/plugins
-go test -tags=unit ./... # unit tests (34 passing)
+go test -tags=unit ./... # unit tests (41 passing)
 make conformance-test    # live API conformance tests (needs SUPABASE_ACCESS_TOKEN)
 ```
 
+> ⚠️ **`make conformance-test` hits live Supabase.**
+> Project + Branch fixtures provision real infrastructure that bills
+> the account (Branches require a paid plan; Project create takes
+> 2–3 min). Run with `TEST=<prefix>` to scope, e.g.
+> `make conformance-test TEST=apikey TIMEOUT=5m`. `scripts/ci/clean-environment.sh`
+> runs before and after the suite to delete residue.
+
 ## Licensing
 
-Apache-2.0.
+Apache-2.0. See [LICENSE](LICENSE) and [CHANGELOG.md](CHANGELOG.md).
