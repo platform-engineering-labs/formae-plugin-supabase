@@ -72,12 +72,11 @@ type projectAPI struct {
 	CreatedAt           string `json:"created_at,omitempty"`
 }
 
+// toProps converts the API-facing shape to the Forma-facing shape. The two
+// structs have identical fields (only the json tags differ), so a direct
+// conversion is sufficient.
 func (a projectAPI) toProps() ProjectProperties {
-	return ProjectProperties{
-		ID: a.ID, Name: a.Name, OrganizationID: a.OrganizationID, Region: a.Region,
-		DBPass: a.DBPass, Plan: a.Plan, DesiredInstanceSize: a.DesiredInstanceSize,
-		Status: a.Status, CreatedAt: a.CreatedAt,
-	}
+	return ProjectProperties(a)
 }
 
 const (
