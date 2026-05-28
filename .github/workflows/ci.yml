@@ -181,7 +181,11 @@ jobs:
             if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
               VERSION="latest"
             fi
-            make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15m
+            # Run CRUD lifecycle only as the gating matrix. Discovery tests
+            # exercise our List() walking every project the token can see —
+            # slow + rate-limit-prone — so they're gated on schedule, not
+            # blocking push/PR.
+            make conformance-test-crud VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15m
 
   # Aggregate the matrix — single green tick on the PR/branch.
   conformance-summary:
