@@ -12,7 +12,7 @@ on:
   workflow_dispatch:
     inputs:
       test_filter:
-        description: 'Conformance test name filter (e.g. apikey). Empty = all tests.'
+        description: 'Conformance test name filter (e.g. apikey). Empty = all tests in parallel.'
         required: false
         default: ''
         type: string
@@ -22,7 +22,17 @@ on:
         default: 'latest'
         type: string
 
+# Serialise conformance runs — they share a single Supabase project for
+# sub-resource tests, so parallel pipelines clobber each other.
+concurrency:
+  group: supabase-conformance-tests
+  cancel-in-progress: false
+
 jobs:
+  # ------------------------------------------------------------------
+  # Always-on checks (build, lint, schema). Run on every push and PR.
+  # ------------------------------------------------------------------
+
   build:
     runs-on: ubuntu-latest
     steps:
@@ -72,39 +82,56 @@ jobs:
       - name: Verify schema
         run: make verify-schema
 
-  # Conformance tests run against a live Supabase project + billable
-  # resources (Project create takes 2–3 min and bills the account).
-  #
-  # Trigger matrix:
-  #   schedule          → full suite nightly (billable, low frequency)
-  #   workflow_dispatch → optional `test_filter` input scopes the run
-  #                       (e.g. set to `apikey` for a $0 free-tier check)
-  #   push / pull_request → skipped (would bill on every merge / PR)
-  #
-  # Required GitHub secrets:
-  #   - SUPABASE_ACCESS_TOKEN     Personal Access Token (https://supabase.com/dashboard/account/tokens)
-  #   - SUPABASE_ORGANIZATION_ID  Org slug for ephemeral test projects
-  #   - SUPABASE_PROJECT_REF      Pre-provisioned project for sub-resource tests
-  #   - SUPABASE_DB_PASS          Postgres password used by the Project conformance fixtures
-  conformance-tests:
+  # ------------------------------------------------------------------
+  # Live conformance tests — runs on schedule + workflow_dispatch only.
+  # ------------------------------------------------------------------
+
+  # Discover one matrix entry per `testdata/<name>.pkl` (excluding -update
+  # and -replace variants). The conformance harness picks them up via
+  # `TEST=<name>` and runs the create/update/replace/destroy lifecycle.
+  discover-tests:
     needs: [build, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch'
-    timeout-minutes: 60
+    outputs:
+      test-cases: ${{ steps.discover.outputs.test-cases }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover test cases
+        id: discover
+        run: |
+          FILTER="${{ inputs.test_filter }}"
+          TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '\-update\.pkl$' \
+            | grep -v '\-replace\.pkl$' \
+            | sed 's/\.pkl$//' \
+            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else cat; fi; } \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "Discovered test cases: ${TEST_CASES}"
+          echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
 
+  conformance-tests:
+    needs: [discover-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
     strategy:
-      fail-fast: false
       matrix:
-        formae_version: ['latest']
+        test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
+      # Supabase API rate-limits at 120 req/min — cap parallelism so the
+      # matrix doesn't 429 the org. Singletons all hit the same project,
+      # so high parallelism doesn't gain much anyway.
+      max-parallel: 3
+      fail-fast: false
 
     env:
       SUPABASE_ACCESS_TOKEN:    ${{ secrets.SUPABASE_ACCESS_TOKEN }}
       SUPABASE_ORGANIZATION_ID: ${{ secrets.SUPABASE_ORGANIZATION_ID }}
       SUPABASE_PROJECT_REF:     ${{ secrets.SUPABASE_PROJECT_REF }}
       SUPABASE_DB_PASS:         ${{ secrets.SUPABASE_DB_PASS }}
-      FORMAE_TEST_RUN_ID:       ${{ github.run_id }}-${{ github.run_attempt }}
+      FORMAE_TEST_RUN_ID:       ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.test-case }}
 
     steps:
       - uses: actions/checkout@v4
@@ -118,17 +145,32 @@ jobs:
       - name: Install plugin
         run: make install
 
-      - name: Run conformance tests
+      - name: Run conformance test (${{ matrix.test-case }})
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 2
+          # Reset the shared project state on retry so a partial run
+          # doesn't leak into the second attempt.
+          on_retry_command: ./scripts/ci/clean-environment.sh || true
+          command: |
+            VERSION="${{ inputs.formae_version }}"
+            if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
+              VERSION="latest"
+            fi
+            make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15
+
+  # Aggregate the matrix — single green tick on the PR/branch.
+  conformance-summary:
+    needs: [conformance-tests]
+    runs-on: ubuntu-latest
+    if: always() && needs.conformance-tests.result != 'skipped'
+    steps:
+      - name: Report aggregate result
         run: |
-          VERSION="${{ inputs.formae_version }}"
-          if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
-            VERSION="${{ matrix.formae_version }}"
-          fi
-          FILTER="${{ inputs.test_filter }}"
-          if [ -n "$FILTER" ]; then
-            echo "Running conformance with TEST=$FILTER"
-            make conformance-test VERSION="$VERSION" TEST="$FILTER"
+          if [ "${{ needs.conformance-tests.result }}" = "success" ]; then
+            echo "All conformance matrix entries passed."
           else
-            echo "Running full conformance suite (billable)"
-            make conformance-test VERSION="$VERSION"
+            echo "Conformance matrix failed: ${{ needs.conformance-tests.result }}"
+            exit 1
           fi
