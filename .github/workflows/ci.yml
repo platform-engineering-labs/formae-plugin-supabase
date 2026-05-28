@@ -150,10 +150,13 @@ jobs:
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
-      # Supabase API rate-limits at 120 req/min — cap parallelism so the
-      # matrix doesn't 429 the org. Singletons all hit the same project,
-      # so high parallelism doesn't gain much anyway.
-      max-parallel: 3
+      # Matrix entries serialize because `scripts/ci/clean-environment.sh`
+      # runs before + after each test and indiscriminately deletes
+      # resources matching the test prefix on the shared project.
+      # Running two jobs in parallel = each job's pre-cleanup nukes the
+      # other's freshly-created resources before discovery sees them.
+      # Fix once the cleanup script gets per-run scoping.
+      max-parallel: 1
       fail-fast: false
 
     env:
