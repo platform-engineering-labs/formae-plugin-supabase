@@ -47,11 +47,13 @@ type Plugin struct {
 var _ plugin.ResourcePlugin = &Plugin{}
 
 func (p *Plugin) getDeps(targetCfg json.RawMessage) (*supatransport.Client, *registry.TargetConfig, error) {
-	p.mu.Lock()
-	defer p.mu.Unlock()
-	if p.client != nil {
-		return p.client, p.target, nil
-	}
+	// Re-parse target config per request. The agent issues operations
+	// against potentially different targets in the same plugin process
+	// (e.g. extract across multiple Supabase orgs, or discovery sync
+	// after a CRUD test that used a different target). Caching the
+	// first target locks the plugin into stale config — in particular,
+	// stale `ProjectRef` made discovery walk every project the PAT
+	// could see, blowing past the harness's 2-minute timeout.
 	cfg, err := parseTargetConfig(targetCfg)
 	if err != nil {
 		return nil, nil, err
@@ -60,14 +62,18 @@ func (p *Plugin) getDeps(targetCfg json.RawMessage) (*supatransport.Client, *reg
 	if token == "" {
 		return nil, nil, fmt.Errorf("%s must be set", envAccessToken)
 	}
-	c, err := supatransport.NewClient(supatransport.Config{
-		BaseURL:     cfg.BaseURL,
-		AccessToken: token,
-	})
-	if err != nil {
-		return nil, nil, err
+	p.mu.Lock()
+	defer p.mu.Unlock()
+	if p.client == nil || p.target == nil || p.target.BaseURL != cfg.BaseURL {
+		c, err := supatransport.NewClient(supatransport.Config{
+			BaseURL:     cfg.BaseURL,
+			AccessToken: token,
+		})
+		if err != nil {
+			return nil, nil, err
+		}
+		p.client = c
 	}
-	p.client = c
 	p.target = cfg
 	return p.client, p.target, nil
 }
