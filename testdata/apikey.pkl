@@ -15,7 +15,7 @@ forma {
 
   new supabase.APIKey {
     label = "plugin-sdk-test-apikey"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     apikey_type = "secret"
     // Name pattern: lowercase, [a-z_][a-z0-9_]+, 4–64 chars.
     name = "sdk_test_\(v.testRunID)"

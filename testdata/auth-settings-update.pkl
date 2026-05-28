@@ -15,7 +15,7 @@ forma {
 
   new supabase.AuthSettings {
     label = "plugin-sdk-test-auth-settings"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     settings = new Mapping {
       ["site_url"] = "https://sdk-test-\(v.testRunID)-updated.example"   // CHANGED
       ["mailer_autoconfirm"] = false                                      // CHANGED

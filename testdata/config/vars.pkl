@@ -23,7 +23,7 @@ organizationID = read("env:SUPABASE_ORGANIZATION_ID")
 // Existing project ref used by every sub-resource (Branch, APIKey, EdgeFunction,
 // Secret, *Settings). Lets the tests run fast without paying for full project
 // provisioning each cycle.
-projectRef = read("env:SUPABASE_PROJECT_REF")
+supabaseProjectRef = read("env:SUPABASE_PROJECT_REF")
 
 // AWS region the test resources live in. us-east-1 is the safest default.
 region = read?("env:SUPABASE_REGION") ?? "us-east-1"
@@ -41,6 +41,6 @@ target = new formae.Target {
     label = "supabase-target"
     config = new supabase.Config {
         organizationId = organizationID
-        projectRef     = projectRef
+        projectRef     = supabaseProjectRef
     }
 }

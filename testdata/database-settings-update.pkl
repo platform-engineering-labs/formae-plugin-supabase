@@ -15,7 +15,7 @@ forma {
 
   new supabase.DatabaseSettings {
     label = "plugin-sdk-test-database-settings"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     settings = new Mapping {
       ["statement_timeout"] = "15s"                       // CHANGED
     }

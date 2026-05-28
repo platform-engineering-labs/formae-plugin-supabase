@@ -15,7 +15,7 @@ forma {
 
   new supabase.NetworkRestriction {
     label = "plugin-sdk-test-network-restriction"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     settings = new Mapping {
       ["dbAllowedCidrs"] = new Listing {
         "198.51.100.0/24"                                // CHANGED

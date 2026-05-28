@@ -17,7 +17,7 @@ forma {
 
   new supabase.Branch {
     label = "plugin-sdk-test-branch"
-    parentProjectRef = v.projectRef
+    parentProjectRef = v.supabaseProjectRef
     branch_name = "sdk-test-\(v.testRunID)"
     persistent = false
   }

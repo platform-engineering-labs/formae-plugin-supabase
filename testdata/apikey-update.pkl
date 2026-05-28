@@ -16,7 +16,7 @@ forma {
 
   new supabase.APIKey {
     label = "plugin-sdk-test-apikey"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     apikey_type = "secret"
     name = "sdk_test_\(v.testRunID)_rotated"           // CHANGED
     description = "Plugin SDK conformance — rotated"   // CHANGED

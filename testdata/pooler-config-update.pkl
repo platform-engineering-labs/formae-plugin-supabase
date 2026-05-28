@@ -15,7 +15,7 @@ forma {
 
   new supabase.PoolerConfig {
     label = "plugin-sdk-test-pooler-config"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     settings = new Mapping {
       ["pool_mode"]         = "session"    // CHANGED
       ["default_pool_size"] = 25           // CHANGED

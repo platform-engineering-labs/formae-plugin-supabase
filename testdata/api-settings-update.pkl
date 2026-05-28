@@ -15,7 +15,7 @@ forma {
 
   new supabase.APISettings {
     label = "plugin-sdk-test-api-settings"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     settings = new Mapping {
       ["db_schema"] = "public"
       ["max_rows"] = 2000                                // CHANGED

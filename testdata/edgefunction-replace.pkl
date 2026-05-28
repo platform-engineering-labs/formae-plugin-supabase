@@ -16,7 +16,7 @@ forma {
 
   new supabase.EdgeFunction {
     label = "plugin-sdk-test-edgefunction"
-    projectRef = v.projectRef
+    projectRef = v.supabaseProjectRef
     slug = "sdk-test-\(v.testRunID)-v2"                  // CHANGED — triggers replacement
     name = "SDK Test \(v.testRunID)"
     body = """
