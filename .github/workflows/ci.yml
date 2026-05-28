@@ -89,12 +89,19 @@ jobs:
   # Discover one matrix entry per `testdata/<name>.pkl` (excluding -update
   # and -replace variants). The conformance harness picks them up via
   # `TEST=<name>` and runs the create/update/replace/destroy lifecycle.
+  #
+  # Trigger matrix:
+  #   push to main      → full suite (billable; gated by main protection)
+  #   schedule          → full suite nightly
+  #   workflow_dispatch → optional `test_filter` scopes the run
+  #   pull_request      → skipped (no secrets exposed to forks)
   discover-tests:
     needs: [build, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'schedule' ||
-      github.event_name == 'workflow_dispatch'
+      github.event_name == 'workflow_dispatch' ||
+      (github.event_name == 'push' && github.ref == 'refs/heads/main')
     outputs:
       test-cases: ${{ steps.discover.outputs.test-cases }}
     steps:
