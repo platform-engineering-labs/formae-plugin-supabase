@@ -116,17 +116,23 @@ jobs:
           #     test project (`SUPABASE_PROJECT_REF`) is free tier.
           #   organization — the Management API exposes no DELETE for orgs,
           #     so the harness's OOB-delete step can never succeed.
+          #   project — free-tier projects can sit in transient states
+          #     (UPGRADING, COMING_UP) for 5+ minutes after Create, longer
+          #     than formae's reconciler retry budget. Project.Update is
+          #     guarded with a Status pre-check so the PATCH only fires
+          #     when ACTIVE_HEALTHY, but on slow CI projects we hit the
+          #     poll timeout. Runs cleanly against a paid pre-warmed
+          #     project — use workflow_dispatch -f test_filter=project.
           #
-          # Singletons (*-settings, network-restriction, pooler-config) and
-          # project are now in the default matrix again — managed-keys are
-          # encoded in NativeID so Read no longer surfaces server-side
-          # extras as drift, and Project.Update probes Status before PATCH
-          # so transient post-Create states yield InProgress instead of a
-          # hard Failure.
+          # Singletons (*-settings, network-restriction, pooler-config) are
+          # in the default matrix now — managed-keys are encoded in
+          # NativeID so Read no longer surfaces server-side extras as
+          # drift, and their PKL ResourceHint sets discoverable=false so
+          # OOB-delete + sync doesn't re-discover them.
           #
-          # Override with `workflow_dispatch -f test_filter=<name>` to force
-          # an excluded resource into a run (e.g. against a paid project).
-          EXCLUDE='branch|organization'
+          # Override with `workflow_dispatch -f test_filter=<name>` to
+          # force an excluded resource into a run.
+          EXCLUDE='branch|organization|project'
 
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
