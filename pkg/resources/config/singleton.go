@@ -4,14 +4,22 @@
 
 // Package config provides per-project singleton configuration provisioners
 // (Auth, API/PostgREST, Database, Network restrictions). All four share the
-// same shape: opaque settings map exchanged with the API, native id = project
-// ref, no create/delete — only read and upsert.
+// same shape: opaque settings map exchanged with the API, native id encodes
+// projectRef + managed keys, no create/delete — only read and upsert.
+//
+// Native ID format: `{projectRef}#k1,k2,k3` where the keys segment is a
+// sorted, comma-separated list of the settings keys the user manages. On
+// Read, the API response is filtered to those keys so unknown server-side
+// fields (jwt_secret, db_pool, …) don't surface as drift in the conformance
+// harness.
 package config
 
 import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	supatransport "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/transport/supabase"
@@ -22,6 +30,68 @@ import (
 type Properties struct {
 	ProjectRef string                 `json:"projectRef"`
 	Settings   map[string]interface{} `json:"settings,omitempty"`
+}
+
+// nativeIDSep separates projectRef from the managed-keys CSV. The `#` avoids
+// collision with any character valid in a Supabase project ref (`[a-z]+`).
+const nativeIDSep = "#"
+
+// encodeNativeID builds `projectRef#k1,k2,...` (keys sorted) from a settings
+// map. Keys with empty strings are dropped — the user didn't actually
+// specify them.
+func encodeNativeID(projectRef string, settings map[string]interface{}) string {
+	keys := managedKeys(settings)
+	if len(keys) == 0 {
+		return projectRef
+	}
+	return projectRef + nativeIDSep + strings.Join(keys, ",")
+}
+
+// decodeNativeID returns (projectRef, managedKeysSet). The set is nil when
+// the native id has no keys segment (legacy native ids).
+func decodeNativeID(nativeID string) (string, map[string]struct{}) {
+	idx := strings.Index(nativeID, nativeIDSep)
+	if idx < 0 {
+		return nativeID, nil
+	}
+	projectRef := nativeID[:idx]
+	keys := strings.Split(nativeID[idx+len(nativeIDSep):], ",")
+	set := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		if k != "" {
+			set[k] = struct{}{}
+		}
+	}
+	return projectRef, set
+}
+
+// managedKeys returns the sorted, deduplicated keys of a settings map.
+func managedKeys(settings map[string]interface{}) []string {
+	if len(settings) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(settings))
+	for k := range settings {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+// filterToKeys returns a new map containing only the entries from in whose
+// key is present in keep. A nil `keep` (legacy native id) returns the
+// original map untouched.
+func filterToKeys(in map[string]interface{}, keep map[string]struct{}) map[string]interface{} {
+	if keep == nil {
+		return in
+	}
+	out := make(map[string]interface{}, len(keep))
+	for k := range keep {
+		if v, ok := in[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
 }
 
 // singleton implements prov.Provisioner for any config endpoint that supports
@@ -62,12 +132,15 @@ func (s *singleton) Create(ctx context.Context, req *resource.CreateRequest) (*r
 	if err != nil {
 		return prov.FailCreate(supatransport.ClassifyError(err), err.Error()), nil
 	}
+	keep := keysFromMap(p.Settings)
+	nativeID := encodeNativeID(p.ProjectRef, p.Settings)
+	echoed := filterToKeys(resp, keep)
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			NativeID:           p.ProjectRef,
-			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: p.ProjectRef, Settings: resp}),
+			NativeID:           nativeID,
+			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: p.ProjectRef, Settings: echoed}),
 		},
 	}, nil
 }
@@ -76,16 +149,18 @@ func (s *singleton) Read(ctx context.Context, req *resource.ReadRequest) (*resou
 	if req.NativeID == "" {
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeInvalidRequest}, nil
 	}
+	projectRef, keep := decodeNativeID(req.NativeID)
 	var resp map[string]interface{}
 	if err := s.client.Do(ctx, supatransport.Request{
-		Method: "GET", Path: s.endpoint(req.NativeID),
+		Method: "GET", Path: s.endpoint(projectRef),
 	}, &resp); err != nil {
 		if supatransport.IsNotFound(err) {
 			return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 		}
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: supatransport.ClassifyError(err)}, nil
 	}
-	out := prov.MustMarshal(Properties{ProjectRef: req.NativeID, Settings: resp})
+	echoed := filterToKeys(resp, keep)
+	out := prov.MustMarshal(Properties{ProjectRef: projectRef, Settings: echoed})
 	return &resource.ReadResult{ResourceType: req.ResourceType, Properties: string(out)}, nil
 }
 
@@ -94,19 +169,22 @@ func (s *singleton) Update(ctx context.Context, req *resource.UpdateRequest) (*r
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
+	projectRef, _ := decodeNativeID(req.NativeID)
 	if desired.ProjectRef == "" {
-		desired.ProjectRef = req.NativeID
+		desired.ProjectRef = projectRef
 	}
 	resp, err := s.upsert(ctx, desired.ProjectRef, desired.Settings)
 	if err != nil {
 		return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
 	}
+	keep := keysFromMap(desired.Settings)
+	echoed := filterToKeys(resp, keep)
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			NativeID:           req.NativeID,
-			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: desired.ProjectRef, Settings: resp}),
+			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: desired.ProjectRef, Settings: echoed}),
 		},
 	}, nil
 }
@@ -134,4 +212,16 @@ func (s *singleton) Status(ctx context.Context, req *resource.StatusRequest) (*r
 func (s *singleton) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
 	ids := prov.ProjectIDs(ctx, s.client, s.projectScope)
 	return &resource.ListResult{NativeIDs: ids}, nil
+}
+
+// keysFromMap returns a set of the map's keys, or nil for an empty map.
+func keysFromMap(m map[string]interface{}) map[string]struct{} {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(m))
+	for k := range m {
+		out[k] = struct{}{}
+	}
+	return out
 }

@@ -49,8 +49,10 @@ func TestPoolerConfig_Create_PatchesPooler(t *testing.T) {
 		},
 	})
 	res, _ := pc.Create(context.Background(), &resource.CreateRequest{Properties: props})
-	if res.ProgressResult.NativeID != "p1" || res.ProgressResult.OperationStatus != resource.OperationStatusSuccess {
-		t.Fatalf("create = %+v", res.ProgressResult)
+	// NativeID encodes the managed keys as a sorted CSV suffix.
+	wantID := "p1#default_pool_size,pool_mode"
+	if res.ProgressResult.NativeID != wantID || res.ProgressResult.OperationStatus != resource.OperationStatusSuccess {
+		t.Fatalf("create = %+v; want NativeID=%q Success", res.ProgressResult, wantID)
 	}
 }
 

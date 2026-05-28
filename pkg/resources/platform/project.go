@@ -164,6 +164,30 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 			},
 		}, nil
 	}
+
+	// Supabase rejects PATCH while the project is still transitioning
+	// (e.g. immediately after Create returns ACTIVE_HEALTHY there's a
+	// short window where the control plane has not committed). Probe
+	// status first; if non-active, return InProgress so formae's
+	// reconciler polls Status() and retries the Update later.
+	var pre projectAPI
+	if err := p.Client.Do(ctx, supatransport.Request{
+		Method: "GET", Path: "/v1/projects/" + req.NativeID,
+	}, &pre); err != nil {
+		return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
+	}
+	if pre.Status != projectStatusActive {
+		return &resource.UpdateResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:       resource.OperationUpdate,
+				OperationStatus: resource.OperationStatusInProgress,
+				NativeID:        req.NativeID,
+				RequestID:       req.NativeID,
+				StatusMessage:   "project not yet active (status=" + pre.Status + "); will retry",
+			},
+		}, nil
+	}
+
 	var apiResp projectAPI
 	if err := p.Client.Do(ctx, supatransport.Request{
 		Method: "PATCH", Path: "/v1/projects/" + req.NativeID, Body: body,

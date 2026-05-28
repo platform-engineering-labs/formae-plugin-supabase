@@ -9,6 +9,8 @@ import (
 	"context"
 	"encoding/json"
 	"fmt"
+	"sort"
+	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/registry"
@@ -74,12 +76,14 @@ func (p *PoolerConfig) Create(ctx context.Context, req *resource.CreateRequest) 
 	if err != nil {
 		return prov.FailCreate(supatransport.ClassifyError(err), err.Error()), nil
 	}
+	keep := keysFromMap(props.Settings)
+	echoed := filterToKeys(updated, keep)
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			NativeID:           props.ProjectRef,
-			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: props.ProjectRef, Settings: updated}),
+			NativeID:           encodeNativeID(props.ProjectRef, props.Settings),
+			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: props.ProjectRef, Settings: echoed}),
 		},
 	}, nil
 }
@@ -88,14 +92,16 @@ func (p *PoolerConfig) Read(ctx context.Context, req *resource.ReadRequest) (*re
 	if req.NativeID == "" {
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeInvalidRequest}, nil
 	}
-	primary, err := p.readPrimary(ctx, req.NativeID)
+	projectRef, keep := decodeNativeID(req.NativeID)
+	primary, err := p.readPrimary(ctx, projectRef)
 	if err != nil {
 		if supatransport.IsNotFound(err) {
 			return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 		}
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: supatransport.ClassifyError(err)}, nil
 	}
-	out := prov.MustMarshal(Properties{ProjectRef: req.NativeID, Settings: primary})
+	echoed := filterToKeys(primary, keep)
+	out := prov.MustMarshal(Properties{ProjectRef: projectRef, Settings: echoed})
 	return &resource.ReadResult{ResourceType: req.ResourceType, Properties: string(out)}, nil
 }
 
@@ -104,19 +110,22 @@ func (p *PoolerConfig) Update(ctx context.Context, req *resource.UpdateRequest) 
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
+	projectRef, _ := decodeNativeID(req.NativeID)
 	if desired.ProjectRef == "" {
-		desired.ProjectRef = req.NativeID
+		desired.ProjectRef = projectRef
 	}
 	updated, err := p.patch(ctx, desired.ProjectRef, desired.Settings)
 	if err != nil {
 		return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
 	}
+	keep := keysFromMap(desired.Settings)
+	echoed := filterToKeys(updated, keep)
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
 			OperationStatus:    resource.OperationStatusSuccess,
 			NativeID:           req.NativeID,
-			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: desired.ProjectRef, Settings: updated}),
+			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: desired.ProjectRef, Settings: echoed}),
 		},
 	}, nil
 }
@@ -146,6 +155,72 @@ func (p *PoolerConfig) Status(_ context.Context, req *resource.StatusRequest) (*
 func (p *PoolerConfig) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
 	ids := prov.ProjectIDs(ctx, p.client, p.projectScope)
 	return &resource.ListResult{NativeIDs: ids}, nil
+}
+
+// ------------------------------------------------------------------
+// shared helpers: managed-key tracking via NativeID
+// ------------------------------------------------------------------
+
+const nativeIDSep = "#"
+
+func encodeNativeID(projectRef string, settings map[string]interface{}) string {
+	keys := managedKeys(settings)
+	if len(keys) == 0 {
+		return projectRef
+	}
+	return projectRef + nativeIDSep + strings.Join(keys, ",")
+}
+
+func decodeNativeID(nativeID string) (string, map[string]struct{}) {
+	idx := strings.Index(nativeID, nativeIDSep)
+	if idx < 0 {
+		return nativeID, nil
+	}
+	projectRef := nativeID[:idx]
+	keys := strings.Split(nativeID[idx+len(nativeIDSep):], ",")
+	set := make(map[string]struct{}, len(keys))
+	for _, k := range keys {
+		if k != "" {
+			set[k] = struct{}{}
+		}
+	}
+	return projectRef, set
+}
+
+func managedKeys(settings map[string]interface{}) []string {
+	if len(settings) == 0 {
+		return nil
+	}
+	out := make([]string, 0, len(settings))
+	for k := range settings {
+		out = append(out, k)
+	}
+	sort.Strings(out)
+	return out
+}
+
+func filterToKeys(in map[string]interface{}, keep map[string]struct{}) map[string]interface{} {
+	if keep == nil {
+		return in
+	}
+	out := make(map[string]interface{}, len(keep))
+	for k := range keep {
+		if v, ok := in[k]; ok {
+			out[k] = v
+		}
+	}
+	return out
+}
+
+func keysFromMap(m map[string]interface{}) map[string]struct{} {
+	if len(m) == 0 {
+		return nil
+	}
+	out := make(map[string]struct{}, len(m))
+	for k := range m {
+		out[k] = struct{}{}
+	}
+	return out
 }
 
 // patch sends an UpdateSupavisorConfigBody. The API returns the updated
