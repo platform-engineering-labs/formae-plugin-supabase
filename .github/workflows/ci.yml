@@ -91,17 +91,19 @@ jobs:
   # `TEST=<name>` and runs the create/update/replace/destroy lifecycle.
   #
   # Trigger matrix:
-  #   push to main      → full suite (billable; gated by main protection)
-  #   schedule          → full suite nightly
-  #   workflow_dispatch → optional `test_filter` scopes the run
-  #   pull_request      → skipped (no secrets exposed to forks)
+  #   push to main           → full suite (billable; main branch protection)
+  #   schedule (nightly)     → full suite
+  #   workflow_dispatch      → optional `test_filter` scopes the run
+  #   pull_request (same-repo) → full suite
+  #   pull_request (fork)    → skipped — GitHub strips secrets from fork PRs
   discover-tests:
     needs: [build, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: >-
       github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
-      (github.event_name == 'push' && github.ref == 'refs/heads/main')
+      (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
+      (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)
     outputs:
       test-cases: ${{ steps.discover.outputs.test-cases }}
     steps:
