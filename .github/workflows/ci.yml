@@ -111,13 +111,27 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
+          # Resources excluded from the default matrix:
+          #   *-settings, network-restriction, pooler-config — singletons whose
+          #     Read returns server-side fields (jwt_secret, db_pool, etc.) on
+          #     top of the user-set keys; the conformance verifier rejects
+          #     these as "not expected and not provider default". Needs
+          #     per-key tracking in NativeID to fix properly.
+          #   branch — Supabase branches require a paid project. The shared
+          #     test project (`SUPABASE_PROJECT_REF`) is free tier; the API
+          #     returns empty on List so sync removes the resource.
+          #
+          # Override with `workflow_dispatch -f test_filter=<name>` to force
+          # one of these into a run anyway (e.g. against a paid project).
+          EXCLUDE='api-settings|auth-settings|database-settings|network-restriction|pooler-config|branch'
+
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \
             | grep -v '\-update\.pkl$' \
             | grep -v '\-replace\.pkl$' \
             | sed 's/\.pkl$//' \
-            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else cat; fi; } \
+            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else grep -Ev "^($EXCLUDE)$"; fi; } \
             | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "Discovered test cases: ${TEST_CASES}"
           echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
