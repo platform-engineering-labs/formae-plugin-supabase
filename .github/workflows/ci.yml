@@ -6,14 +6,16 @@ on:
   pull_request:
     branches: [main]
   schedule:
-    - cron: '0 3 * * *'  # Nightly at 3 AM UTC
+    # Nightly full conformance run against live Supabase. Billable —
+    # provisions Project + (paid) Branch resources, then tears them down.
+    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
-      run_conformance:
-        description: 'Run conformance tests against live Supabase'
+      test_filter:
+        description: 'Conformance test name filter (e.g. apikey). Empty = all tests.'
         required: false
-        default: 'false'
-        type: boolean
+        default: ''
+        type: string
       formae_version:
         description: 'Formae version to test against (default: latest)'
         required: false
@@ -71,10 +73,15 @@ jobs:
         run: make verify-schema
 
   # Conformance tests run against a live Supabase project + billable
-  # resources (Project create takes 2–3 min and bills the account). Gated
-  # on workflow_dispatch input to avoid surprise charges.
+  # resources (Project create takes 2–3 min and bills the account).
   #
-  # To enable: configure these GitHub secrets on the repository:
+  # Trigger matrix:
+  #   schedule          → full suite nightly (billable, low frequency)
+  #   workflow_dispatch → optional `test_filter` input scopes the run
+  #                       (e.g. set to `apikey` for a $0 free-tier check)
+  #   push / pull_request → skipped (would bill on every merge / PR)
+  #
+  # Required GitHub secrets:
   #   - SUPABASE_ACCESS_TOKEN     Personal Access Token (https://supabase.com/dashboard/account/tokens)
   #   - SUPABASE_ORGANIZATION_ID  Org slug for ephemeral test projects
   #   - SUPABASE_PROJECT_REF      Pre-provisioned project for sub-resource tests
@@ -82,7 +89,9 @@ jobs:
   conformance-tests:
     needs: [build, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
-    if: ${{ github.event.inputs.run_conformance == 'true' }}
+    if: >-
+      github.event_name == 'schedule' ||
+      github.event_name == 'workflow_dispatch'
     timeout-minutes: 60
 
     strategy:
@@ -112,7 +121,14 @@ jobs:
       - name: Run conformance tests
         run: |
           VERSION="${{ inputs.formae_version }}"
-          if [ "$VERSION" = "" ] || [ "$VERSION" = "latest" ]; then
+          if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
             VERSION="${{ matrix.formae_version }}"
           fi
-          make conformance-test VERSION="$VERSION"
+          FILTER="${{ inputs.test_filter }}"
+          if [ -n "$FILTER" ]; then
+            echo "Running conformance with TEST=$FILTER"
+            make conformance-test VERSION="$VERSION" TEST="$FILTER"
+          else
+            echo "Running full conformance suite (billable)"
+            make conformance-test VERSION="$VERSION"
+          fi
