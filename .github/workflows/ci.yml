@@ -167,7 +167,7 @@ jobs:
             if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
               VERSION="latest"
             fi
-            make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15
+            make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15m
 
   # Aggregate the matrix — single green tick on the PR/branch.
   conformance-summary:
