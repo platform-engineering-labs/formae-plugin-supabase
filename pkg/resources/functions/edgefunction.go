@@ -26,8 +26,8 @@ func init() {
 			resource.OperationDelete,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
-			return &EdgeFunction{Client: c}
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
+			return &EdgeFunction{Client: c, ProjectScope: cfg.ProjectRef}
 		},
 	)
 }
@@ -40,7 +40,8 @@ func init() {
 //
 // Native id: `{project_ref}/{slug}`.
 type EdgeFunction struct {
-	Client *supatransport.Client
+	Client       *supatransport.Client
+	ProjectScope string
 }
 
 type EdgeFunctionProperties struct {
@@ -180,21 +181,15 @@ func (e *EdgeFunction) Status(ctx context.Context, req *resource.StatusRequest) 
 }
 
 func (e *EdgeFunction) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
-	var projects []struct {
-		ID string `json:"id"`
-	}
-	if err := e.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects"}, &projects); err != nil {
-		return &resource.ListResult{NativeIDs: []string{}}, nil
-	}
 	var ids []string
-	for _, pr := range projects {
+	for _, projectID := range prov.ProjectIDs(ctx, e.Client, e.ProjectScope) {
 		var fns []EdgeFunctionProperties
-		if err := e.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + pr.ID + "/functions"}, &fns); err != nil {
+		if err := e.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + projectID + "/functions"}, &fns); err != nil {
 			continue
 		}
 		for _, f := range fns {
 			if f.Slug != "" {
-				ids = append(ids, prov.JoinTwoPart(pr.ID, f.Slug))
+				ids = append(ids, prov.JoinTwoPart(projectID, f.Slug))
 			}
 		}
 	}

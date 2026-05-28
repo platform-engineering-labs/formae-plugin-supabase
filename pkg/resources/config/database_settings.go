@@ -22,12 +22,13 @@ func init() {
 			resource.OperationUpdate,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
 			return &DatabaseSettings{singleton: singleton{
 				client:       c,
 				pathSuffix:   "/config/database/postgres",
 				writeMethod:  "PUT",
 				displayLabel: "database settings",
+				projectScope: cfg.ProjectRef,
 			}}
 		},
 	)

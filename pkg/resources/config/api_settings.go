@@ -22,12 +22,13 @@ func init() {
 			resource.OperationUpdate,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
 			return &APISettings{singleton: singleton{
 				client:       c,
 				pathSuffix:   "/postgrest",
 				writeMethod:  "PATCH",
 				displayLabel: "API settings",
+				projectScope: cfg.ProjectRef,
 			}}
 		},
 	)

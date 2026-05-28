@@ -22,12 +22,13 @@ func init() {
 			resource.OperationUpdate,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
 			return &NetworkRestriction{singleton: singleton{
 				client:       c,
 				pathSuffix:   "/network-restrictions",
 				writeMethod:  "PATCH",
 				displayLabel: "network restrictions",
+				projectScope: cfg.ProjectRef,
 			}}
 		},
 	)

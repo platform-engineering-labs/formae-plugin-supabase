@@ -34,10 +34,13 @@ replacementRegion = read?("env:SUPABASE_REPLACEMENT_REGION") ?? "eu-west-1"
 // Postgres password for the Project create test. >= 8 chars.
 dbPass = read?("env:SUPABASE_DB_PASS") ?? "plugin-sdk-test-pass-\(testRunID)"
 
-// Shared target.
+// Shared target. `projectRef` scopes List() to the one project the test
+// suite shares — keeps discovery within the conformance harness's
+// 2-minute timeout window regardless of how many projects the PAT can see.
 target = new formae.Target {
     label = "supabase-target"
     config = new supabase.Config {
         organizationId = organizationID
+        projectRef     = projectRef
     }
 }

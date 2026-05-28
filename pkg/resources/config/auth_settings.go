@@ -22,12 +22,13 @@ func init() {
 			resource.OperationUpdate,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
 			return &AuthSettings{singleton: singleton{
 				client:       c,
 				pathSuffix:   "/config/auth",
 				writeMethod:  "PATCH",
 				displayLabel: "auth settings",
+				projectScope: cfg.ProjectRef,
 			}}
 		},
 	)

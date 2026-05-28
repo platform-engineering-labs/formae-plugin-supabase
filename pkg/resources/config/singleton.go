@@ -31,6 +31,7 @@ type singleton struct {
 	pathSuffix   string // e.g. "/config/auth"
 	writeMethod  string // "PATCH" or "PUT"
 	displayLabel string // for status messages
+	projectScope string // optional — restrict List to this project
 }
 
 func (s *singleton) endpoint(projectRef string) string {
@@ -131,17 +132,6 @@ func (s *singleton) Status(ctx context.Context, req *resource.StatusRequest) (*r
 }
 
 func (s *singleton) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
-	var projects []struct {
-		ID string `json:"id"`
-	}
-	if err := s.client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects"}, &projects); err != nil {
-		return &resource.ListResult{NativeIDs: []string{}}, nil
-	}
-	ids := make([]string, 0, len(projects))
-	for _, pr := range projects {
-		if pr.ID != "" {
-			ids = append(ids, pr.ID)
-		}
-	}
+	ids := prov.ProjectIDs(ctx, s.client, s.projectScope)
 	return &resource.ListResult{NativeIDs: ids}, nil
 }

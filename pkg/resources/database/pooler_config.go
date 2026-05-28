@@ -27,8 +27,8 @@ func init() {
 			resource.OperationUpdate,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
-			return &PoolerConfig{client: c}
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
+			return &PoolerConfig{client: c, projectScope: cfg.ProjectRef}
 		},
 	)
 }
@@ -50,7 +50,8 @@ func init() {
 // Other GET fields (db_user, db_host, db_port, connection_string, …) are
 // read-only and round-trip as additional keys in `settings`.
 type PoolerConfig struct {
-	client *supatransport.Client
+	client       *supatransport.Client
+	projectScope string
 }
 
 // Properties is the wire shape — `projectRef` identifies the singleton;
@@ -143,18 +144,7 @@ func (p *PoolerConfig) Status(_ context.Context, req *resource.StatusRequest) (*
 }
 
 func (p *PoolerConfig) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
-	var projects []struct {
-		ID string `json:"id"`
-	}
-	if err := p.client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects"}, &projects); err != nil {
-		return &resource.ListResult{NativeIDs: []string{}}, nil
-	}
-	ids := make([]string, 0, len(projects))
-	for _, pr := range projects {
-		if pr.ID != "" {
-			ids = append(ids, pr.ID)
-		}
-	}
+	ids := prov.ProjectIDs(ctx, p.client, p.projectScope)
 	return &resource.ListResult{NativeIDs: ids}, nil
 }
 

@@ -27,8 +27,8 @@ func init() {
 			resource.OperationDelete,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
-			return &Secret{Client: c}
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
+			return &Secret{Client: c, ProjectScope: cfg.ProjectRef}
 		},
 	)
 }
@@ -44,7 +44,8 @@ func init() {
 // Caveat: secret values are write-only. The list endpoint returns names but
 // not values, so drift on the value cannot be detected.
 type Secret struct {
-	Client *supatransport.Client
+	Client       *supatransport.Client
+	ProjectScope string
 }
 
 type SecretProperties struct {
@@ -157,23 +158,17 @@ func (s *Secret) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 }
 
 func (s *Secret) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
-	var projects []struct {
-		ID string `json:"id"`
-	}
-	if err := s.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects"}, &projects); err != nil {
-		return &resource.ListResult{NativeIDs: []string{}}, nil
-	}
 	var ids []string
-	for _, pr := range projects {
+	for _, projectID := range prov.ProjectIDs(ctx, s.Client, s.ProjectScope) {
 		var secrets []struct {
 			Name string `json:"name"`
 		}
-		if err := s.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + pr.ID + "/secrets"}, &secrets); err != nil {
+		if err := s.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + projectID + "/secrets"}, &secrets); err != nil {
 			continue
 		}
 		for _, sec := range secrets {
 			if sec.Name != "" {
-				ids = append(ids, prov.JoinTwoPart(pr.ID, sec.Name))
+				ids = append(ids, prov.JoinTwoPart(projectID, sec.Name))
 			}
 		}
 	}

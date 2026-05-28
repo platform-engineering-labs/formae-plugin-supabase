@@ -27,9 +27,16 @@ open class Config {
     /// Override base URL. Defaults to https://api.supabase.com.
     baseUrl: String? = null
 
+    /// Optional project ref to scope `List()` and discovery to a single
+    /// Supabase project. Without it, every project the PAT can see is
+    /// walked — slow on large orgs and can time out the conformance
+    /// harness's 2-minute discovery window.
+    projectRef: String? = null
+
     fixed Type: String = type
     fixed OrganizationId: String? = organizationId
     fixed BaseUrl: String? = baseUrl
+    fixed ProjectRef: String? = projectRef
 }
 
 // =============================================================================

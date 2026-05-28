@@ -27,8 +27,8 @@ func init() {
 			resource.OperationCheckStatus,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
-			return &Branch{Client: c}
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
+			return &Branch{Client: c, ProjectScope: cfg.ProjectRef}
 		},
 	)
 }
@@ -40,7 +40,8 @@ func init() {
 // `{parent_project_ref}/{branch_id}` so Update/Delete don't need extra
 // lookups to recover the parent.
 type Branch struct {
-	Client *supatransport.Client
+	Client       *supatransport.Client
+	ProjectScope string
 }
 
 type BranchProperties struct {
@@ -208,21 +209,15 @@ func (b *Branch) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 }
 
 func (b *Branch) List(ctx context.Context, req *resource.ListRequest) (*resource.ListResult, error) {
-	var projects []struct {
-		ID string `json:"id"`
-	}
-	if err := b.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects"}, &projects); err != nil {
-		return &resource.ListResult{NativeIDs: []string{}}, nil
-	}
 	var ids []string
-	for _, pr := range projects {
+	for _, projectID := range prov.ProjectIDs(ctx, b.Client, b.ProjectScope) {
 		var branches []BranchProperties
-		if err := b.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + pr.ID + "/branches"}, &branches); err != nil {
+		if err := b.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + projectID + "/branches"}, &branches); err != nil {
 			continue
 		}
 		for _, br := range branches {
 			if br.ID != "" {
-				ids = append(ids, prov.JoinTwoPart(pr.ID, br.ID))
+				ids = append(ids, prov.JoinTwoPart(projectID, br.ID))
 			}
 		}
 	}

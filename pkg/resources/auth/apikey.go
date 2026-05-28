@@ -26,8 +26,8 @@ func init() {
 			resource.OperationDelete,
 			resource.OperationList,
 		},
-		func(c *supatransport.Client, _ *registry.TargetConfig) prov.Provisioner {
-			return &APIKey{Client: c}
+		func(c *supatransport.Client, cfg *registry.TargetConfig) prov.Provisioner {
+			return &APIKey{Client: c, ProjectScope: cfg.ProjectRef}
 		},
 	)
 }
@@ -37,7 +37,8 @@ func init() {
 // Native id: `{project_ref}/{key_id}`.
 // `?reveal=true` is added to GET/POST so the raw key value is returned.
 type APIKey struct {
-	Client *supatransport.Client
+	Client       *supatransport.Client
+	ProjectScope string // optional — if set, List only walks this project
 }
 
 // APIKeyProperties is the Forma-facing shape (matches PKL field names).
@@ -201,21 +202,15 @@ func (a *APIKey) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 }
 
 func (a *APIKey) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
-	var projects []struct {
-		ID string `json:"id"`
-	}
-	if err := a.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects"}, &projects); err != nil {
-		return &resource.ListResult{NativeIDs: []string{}}, nil
-	}
 	var ids []string
-	for _, pr := range projects {
+	for _, projectID := range prov.ProjectIDs(ctx, a.Client, a.ProjectScope) {
 		var keys []apiKeyAPI
-		if err := a.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + pr.ID + "/api-keys"}, &keys); err != nil {
+		if err := a.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/projects/" + projectID + "/api-keys"}, &keys); err != nil {
 			continue
 		}
 		for _, k := range keys {
 			if k.ID != "" {
-				ids = append(ids, prov.JoinTwoPart(pr.ID, k.ID))
+				ids = append(ids, prov.JoinTwoPart(projectID, k.ID))
 			}
 		}
 	}

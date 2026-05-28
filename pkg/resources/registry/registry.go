@@ -25,6 +25,11 @@ import (
 type TargetConfig struct {
 	OrganizationID string `json:"OrganizationId"`
 	BaseURL        string `json:"BaseUrl"`
+	// ProjectRef optionally scopes discovery + List() calls to a single
+	// Supabase project. Without it, List() walks every project the token
+	// can see (slow on large orgs; can time out the conformance harness's
+	// 2-minute discovery window).
+	ProjectRef string `json:"ProjectRef"`
 }
 
 // Factory builds a Provisioner bound to a live client and target.
