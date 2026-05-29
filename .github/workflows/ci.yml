@@ -123,16 +123,20 @@ jobs:
           #     when ACTIVE_HEALTHY, but on slow CI projects we hit the
           #     poll timeout. Runs cleanly against a paid pre-warmed
           #     project — use workflow_dispatch -f test_filter=project.
-          #
-          # Singletons (*-settings, network-restriction) are
-          # in the default matrix now — managed-keys are encoded in
-          # NativeID so Read no longer surfaces server-side extras as
-          # drift, and their PKL ResourceHint sets discoverable=false so
-          # OOB-delete + sync doesn't re-discover them.
+          #   *-settings, network-restriction — singletons whose
+          #     underlying API has no DELETE. The conformance harness's
+          #     OOB-delete step expects the resource to disappear from
+          #     inventory; we tombstone locally on Delete + return NotFound
+          #     from Read, but formae's sync re-discovers them via List
+          #     (the project ref still exists) and the harness keeps
+          #     seeing the inventory entry. Fundamental mismatch between
+          #     "always-present per-project config" and the harness's
+          #     CRUDable resource assumption — needs a per-key sub-
+          #     resource model or a harness option to skip OOB-del.
           #
           # Override with `workflow_dispatch -f test_filter=<name>` to
           # force an excluded resource into a run.
-          EXCLUDE='branch|organization|project'
+          EXCLUDE='branch|organization|project|api-settings|auth-settings|database-settings|network-restriction'
 
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
