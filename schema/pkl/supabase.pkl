@@ -288,12 +288,6 @@ class Secret extends formae.Resource {
 @formae.ResourceHint {
     type = "SUPABASE::Config::AuthSettings"
     identifier = "$.projectRef"
-    // Singletons always exist on a project — they can't be created or
-    // destroyed via the Management API, only patched. Discovery would
-    // re-surface them after every apply (an apply that doesn't include
-    // a singleton would show drift on the next sync). Mark non-
-    // discoverable; users `apply` them explicitly when they want them.
-    discoverable = false
 }
 class AuthSettings extends formae.Resource {
     fixed hidden type: String = "SUPABASE::Config::AuthSettings"
@@ -313,12 +307,6 @@ class AuthSettings extends formae.Resource {
 @formae.ResourceHint {
     type = "SUPABASE::Config::APISettings"
     identifier = "$.projectRef"
-    // Singletons always exist on a project — they can't be created or
-    // destroyed via the Management API, only patched. Discovery would
-    // re-surface them after every apply (an apply that doesn't include
-    // a singleton would show drift on the next sync). Mark non-
-    // discoverable; users `apply` them explicitly when they want them.
-    discoverable = false
 }
 class APISettings extends formae.Resource {
     fixed hidden type: String = "SUPABASE::Config::APISettings"
@@ -337,12 +325,6 @@ class APISettings extends formae.Resource {
 @formae.ResourceHint {
     type = "SUPABASE::Config::DatabaseSettings"
     identifier = "$.projectRef"
-    // Singletons always exist on a project — they can't be created or
-    // destroyed via the Management API, only patched. Discovery would
-    // re-surface them after every apply (an apply that doesn't include
-    // a singleton would show drift on the next sync). Mark non-
-    // discoverable; users `apply` them explicitly when they want them.
-    discoverable = false
 }
 class DatabaseSettings extends formae.Resource {
     fixed hidden type: String = "SUPABASE::Config::DatabaseSettings"
@@ -361,12 +343,6 @@ class DatabaseSettings extends formae.Resource {
 @formae.ResourceHint {
     type = "SUPABASE::Config::NetworkRestriction"
     identifier = "$.projectRef"
-    // Singletons always exist on a project — they can't be created or
-    // destroyed via the Management API, only patched. Discovery would
-    // re-surface them after every apply (an apply that doesn't include
-    // a singleton would show drift on the next sync). Mark non-
-    // discoverable; users `apply` them explicitly when they want them.
-    discoverable = false
 }
 class NetworkRestriction extends formae.Resource {
     fixed hidden type: String = "SUPABASE::Config::NetworkRestriction"
