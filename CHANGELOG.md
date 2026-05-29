@@ -34,10 +34,8 @@ NetworkRestriction CRUD, separate `*Settings` singletons).
 - `SUPABASE::Config::DatabaseSettings` — Postgres singleton
   (`/v1/projects/{ref}/config/database/postgres`, uses PUT).
 - `SUPABASE::Config::NetworkRestriction` — CIDR allowlist singleton.
-- `SUPABASE::Database::PoolerConfig` — Supavisor pooler singleton,
-  auto-selects PRIMARY entry from the array response.
 
-- Per-namespace subpackages (`pkg/resources/{platform,auth,functions,config,database}`),
+- Per-namespace subpackages (`pkg/resources/{platform,auth,functions,config}`),
   self-registration via `init()`, slim main dispatcher modelled on the
   K8s plugin.
 - Minimal HTTP transport (`pkg/transport/supabase`) — Bearer auth,

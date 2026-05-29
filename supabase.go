@@ -15,7 +15,6 @@ import (
 	// Side-effect imports register one resource type each via init().
 	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/auth"
 	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/config"
-	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/database"
 	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/functions"
 	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/platform"
 
@@ -127,7 +126,6 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 			"SUPABASE::Config::APISettings":         "$.projectRef",
 			"SUPABASE::Config::DatabaseSettings":    "$.projectRef",
 			"SUPABASE::Config::NetworkRestriction":  "$.projectRef",
-			"SUPABASE::Database::PoolerConfig":      "$.projectRef",
 		},
 	}
 }

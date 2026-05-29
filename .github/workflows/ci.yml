@@ -124,7 +124,7 @@ jobs:
           #     poll timeout. Runs cleanly against a paid pre-warmed
           #     project — use workflow_dispatch -f test_filter=project.
           #
-          # Singletons (*-settings, network-restriction, pooler-config) are
+          # Singletons (*-settings, network-restriction) are
           # in the default matrix now — managed-keys are encoded in
           # NativeID so Read no longer surfaces server-side extras as
           # drift, and their PKL ResourceHint sets discoverable=false so

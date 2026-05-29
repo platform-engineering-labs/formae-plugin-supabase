@@ -382,35 +382,3 @@ class NetworkRestriction extends formae.Resource {
     @formae.FieldHint {}
     settings: Mapping<String, Any>?
 }
-
-// =============================================================================
-// SUPABASE::Database::PoolerConfig
-// =============================================================================
-
-/// Supavisor (connection pooler) configuration. Per-project singleton.
-/// Payload follows UpdateSupavisorConfigBody:
-///   { "default_pool_size": Int(0..3000), "pool_mode": "transaction"|"session" }
-/// Other fields surfaced on Read (db_host, connection_string, …) are
-/// read-only and pass through as additional keys in `settings`.
-@formae.ResourceHint {
-    type = "SUPABASE::Database::PoolerConfig"
-    identifier = "$.projectRef"
-    // Singletons always exist on a project — they can't be created or
-    // destroyed via the Management API, only patched. Discovery would
-    // re-surface them after every apply (an apply that doesn't include
-    // a singleton would show drift on the next sync). Mark non-
-    // discoverable; users `apply` them explicitly when they want them.
-    discoverable = false
-}
-class PoolerConfig extends formae.Resource {
-    fixed hidden type: String = "SUPABASE::Database::PoolerConfig"
-
-    @formae.FieldHint {
-        createOnly = true
-        requiredOnCreate = true
-    }
-    projectRef: String
-
-    @formae.FieldHint {}
-    settings: Mapping<String, Any>?
-}

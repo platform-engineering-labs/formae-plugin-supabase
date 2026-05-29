@@ -10,7 +10,7 @@ Talks to the Supabase Management API at `https://api.supabase.com`.
 
 ## Supported Resources
 
-11 resource types across 5 namespaces. Every type implements full Create,
+10 resource types across 4 namespaces. Every type implements full Create,
 Read, Update, Delete, List + Status (async polling where applicable).
 
 Coverage versus the Supabase Management API (109 endpoints total):
@@ -46,12 +46,6 @@ Each singleton is keyed by project ref; payload is opaque `Mapping<String, Any>`
 | `SUPABASE::Config::APISettings` | `/v1/projects/{ref}/postgrest` | PATCH | `db_schema`, `max_rows`, `db_extra_search_path`, `jwt_secret` |
 | `SUPABASE::Config::DatabaseSettings` | `/v1/projects/{ref}/config/database/postgres` | PUT | `statement_timeout`, `max_connections`, shared buffers, etc. |
 | `SUPABASE::Config::NetworkRestriction` | `/v1/projects/{ref}/network-restrictions` | PATCH | `dbAllowedCidrs`, `dbAllowedCidrsV6` |
-
-### `SUPABASE::Database::*` — database tier
-
-| Resource | Endpoint | Method | Payload |
-|---|---|---|---|
-| `SUPABASE::Database::PoolerConfig` | `/v1/projects/{ref}/config/database/pooler` | PATCH | `default_pool_size` (0..3000), `pool_mode` ("transaction" \| "session"). GET returns array of pooler configs (one per database); plugin auto-selects the PRIMARY entry. |
 
 ### Discovery + extract
 
