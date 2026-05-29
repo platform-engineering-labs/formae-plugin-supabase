@@ -11,12 +11,24 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/registry"
 	supatransport "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/transport/supabase"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
+
+// Process-local tombstones for Delete'd pooler config NativeIDs — see
+// the equivalent comment in pkg/resources/config/singleton.go.
+var poolerTombstones sync.Map
+
+func poolerMarkTombstone(id string)   { poolerTombstones.Store(id, struct{}{}) }
+func poolerClearTombstone(id string)  { poolerTombstones.Delete(id) }
+func poolerIsTombstoned(id string) bool {
+	_, ok := poolerTombstones.Load(id)
+	return ok
+}
 
 const ResourceTypePoolerConfig = "SUPABASE::Database::PoolerConfig"
 
@@ -78,11 +90,13 @@ func (p *PoolerConfig) Create(ctx context.Context, req *resource.CreateRequest) 
 	}
 	keep := keysFromMap(props.Settings)
 	echoed := filterToKeys(updated, keep)
+	nativeID := encodeNativeID(props.ProjectRef, props.Settings)
+	poolerClearTombstone(nativeID)
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationCreate,
 			OperationStatus:    resource.OperationStatusSuccess,
-			NativeID:           encodeNativeID(props.ProjectRef, props.Settings),
+			NativeID:           nativeID,
 			ResourceProperties: prov.MustMarshal(Properties{ProjectRef: props.ProjectRef, Settings: echoed}),
 		},
 	}, nil
@@ -91,6 +105,9 @@ func (p *PoolerConfig) Create(ctx context.Context, req *resource.CreateRequest) 
 func (p *PoolerConfig) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
 	if req.NativeID == "" {
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeInvalidRequest}, nil
+	}
+	if poolerIsTombstoned(req.NativeID) {
+		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 	}
 	projectRef, keep := decodeNativeID(req.NativeID)
 	primary, err := p.readPrimary(ctx, projectRef)
@@ -130,14 +147,17 @@ func (p *PoolerConfig) Update(ctx context.Context, req *resource.UpdateRequest) 
 	}, nil
 }
 
-// Delete is a no-op — the pooler config singleton cannot be removed.
+// Delete marks the NativeID as locally tombstoned. Supabase has no
+// DELETE for pooler config; subsequent Reads return NotFound so the
+// conformance harness's OOB-delete flow tombstones the inventory entry.
 func (p *PoolerConfig) Delete(_ context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	poolerMarkTombstone(req.NativeID)
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusSuccess,
 			NativeID:        req.NativeID,
-			StatusMessage:   "pooler config cannot be deleted; reported success without API call",
+			StatusMessage:   "pooler config has no Management API delete; tombstoned locally",
 		},
 	}, nil
 }

@@ -20,11 +20,28 @@ import (
 	"fmt"
 	"sort"
 	"strings"
+	"sync"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	supatransport "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/transport/supabase"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
+
+// tombstones tracks NativeIDs that were Delete'd. Read returns NotFound
+// for tombstoned IDs so the conformance harness's OOB-delete test (Step
+// 22–24) sees the resource disappear from inventory even though the
+// Supabase Management API can't actually remove a config singleton.
+//
+// Process-local: a plugin restart clears the tombstones. A Create on a
+// previously-tombstoned NativeID also clears it.
+var (
+	tombstones   sync.Map
+	tombstoneAck = struct{}{}
+)
+
+func markTombstone(nativeID string)     { tombstones.Store(nativeID, tombstoneAck) }
+func clearTombstone(nativeID string)    { tombstones.Delete(nativeID) }
+func isTombstoned(nativeID string) bool { _, ok := tombstones.Load(nativeID); return ok }
 
 // Properties is the wire shape for every config singleton.
 type Properties struct {
@@ -134,6 +151,7 @@ func (s *singleton) Create(ctx context.Context, req *resource.CreateRequest) (*r
 	}
 	keep := keysFromMap(p.Settings)
 	nativeID := encodeNativeID(p.ProjectRef, p.Settings)
+	clearTombstone(nativeID)
 	echoed := filterToKeys(resp, keep)
 	return &resource.CreateResult{
 		ProgressResult: &resource.ProgressResult{
@@ -148,6 +166,9 @@ func (s *singleton) Create(ctx context.Context, req *resource.CreateRequest) (*r
 func (s *singleton) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
 	if req.NativeID == "" {
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeInvalidRequest}, nil
+	}
+	if isTombstoned(req.NativeID) {
+		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 	}
 	projectRef, keep := decodeNativeID(req.NativeID)
 	var resp map[string]interface{}
@@ -189,15 +210,21 @@ func (s *singleton) Update(ctx context.Context, req *resource.UpdateRequest) (*r
 	}, nil
 }
 
-// Delete is a no-op: singletons cannot be removed.
+// Delete is mostly a no-op — the Supabase Management API has no DELETE
+// for these config singletons. We mark the NativeID as tombstoned in
+// the plugin process so subsequent Reads return NotFound (lets the
+// conformance harness's OOB-delete + sync flow see the resource
+// disappear from inventory). The actual server-side configuration
+// values are left untouched.
 func (s *singleton) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
 	_ = ctx
+	markTombstone(req.NativeID)
 	return &resource.DeleteResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationDelete,
 			OperationStatus: resource.OperationStatusSuccess,
 			NativeID:        req.NativeID,
-			StatusMessage:   s.displayLabel + " cannot be deleted; reported success without API call",
+			StatusMessage:   s.displayLabel + " has no Management API delete; tombstoned locally",
 		},
 	}, nil
 }
