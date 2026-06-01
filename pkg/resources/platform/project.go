@@ -7,9 +7,11 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"errors"
 	"fmt"
 	"sort"
 	"sync"
+	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/registry"
@@ -341,45 +343,51 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
 
-	// Probe status first; Supabase rejects PATCH while transitioning.
-	var pre projectAPI
-	if err := p.Client.Do(ctx, supatransport.Request{
-		Method: "GET", Path: "/v1/projects/" + req.NativeID,
-	}, &pre); err != nil {
-		return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
-	}
-	if pre.Status != projectStatusActive {
-		return &resource.UpdateResult{
-			ProgressResult: &resource.ProgressResult{
-				Operation:       resource.OperationUpdate,
-				OperationStatus: resource.OperationStatusInProgress,
-				NativeID:        req.NativeID,
-				RequestID:       req.NativeID,
-				StatusMessage:   "project not yet active (status=" + pre.Status + "); will retry",
-			},
-		}, nil
-	}
+	// Cap the whole Update call below the harness's 40s
+	// "PluginOperatorMissingInAction" watchdog. Each underlying HTTP call
+	// has its own 30s client-level timeout; if Supabase is sitting on a
+	// transient state we'd otherwise chain four of them sequentially and
+	// blow past two minutes.
+	callCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
 
 	body := map[string]any{}
 	if desired.Name != "" {
 		body["name"] = desired.Name
 	}
-	apiResp := pre
+	var apiResp projectAPI
 	if len(body) > 0 {
-		if err := p.Client.Do(ctx, supatransport.Request{
+		if err := p.Client.Do(callCtx, supatransport.Request{
 			Method: "PATCH", Path: "/v1/projects/" + req.NativeID, Body: body,
 		}, &apiResp); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return p.inProgressUpdate(req.NativeID, "project metadata patch deadline; will retry"), nil
+			}
+			return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
+		}
+	} else {
+		// No metadata change — read current state so the response carries
+		// it back to formae.
+		if err := p.Client.Do(callCtx, supatransport.Request{
+			Method: "GET", Path: "/v1/projects/" + req.NativeID,
+		}, &apiResp); err != nil {
+			if errors.Is(err, context.DeadlineExceeded) {
+				return p.inProgressUpdate(req.NativeID, "project read deadline; will retry"), nil
+			}
 			return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
 		}
 	}
 
-	if err := p.applyConfigBlocks(ctx, req.NativeID, &desired); err != nil {
+	if err := p.applyConfigBlocks(callCtx, req.NativeID, &desired); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return p.inProgressUpdate(req.NativeID, "config patch deadline; will retry"), nil
+		}
 		return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
 	}
 	recordManagedKeys(req.NativeID, &desired)
 
 	props := apiResp.toProps()
-	p.readConfigBlocks(ctx, req.NativeID, &props)
+	p.readConfigBlocks(callCtx, req.NativeID, &props)
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
@@ -388,6 +396,18 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 			ResourceProperties: prov.MustMarshal(props),
 		},
 	}, nil
+}
+
+func (p *Project) inProgressUpdate(nativeID, msg string) *resource.UpdateResult {
+	return &resource.UpdateResult{
+		ProgressResult: &resource.ProgressResult{
+			Operation:       resource.OperationUpdate,
+			OperationStatus: resource.OperationStatusInProgress,
+			NativeID:        nativeID,
+			RequestID:       nativeID,
+			StatusMessage:   msg,
+		},
+	}
 }
 
 func (p *Project) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
