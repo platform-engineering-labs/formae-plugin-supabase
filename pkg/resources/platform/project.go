@@ -367,29 +367,28 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 	}
 	var apiResp projectAPI
 	if len(body) > 0 {
-		dbg("Update.patch.metadata start nativeID=%s body=%v", req.NativeID, body)
-		patchStart := time.Now()
-		err := p.Client.Do(callCtx, supatransport.Request{
+		// PATCH /v1/projects/{ref} returns a body whose `id` field is a
+		// number rather than the ref string the rest of the API uses
+		// (`{"id":1234,"name":"…"}`). Decoding that into projectAPI.ID
+		// (string) fails. Discard the response and read fresh below.
+		if err := p.Client.Do(callCtx, supatransport.Request{
 			Method: "PATCH", Path: "/v1/projects/" + req.NativeID, Body: body,
-		}, &apiResp)
-		dbg("Update.patch.metadata done nativeID=%s elapsed=%s err=%v", req.NativeID, time.Since(patchStart), err)
-		if err != nil {
+		}, nil); err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				return p.inProgressUpdate(req.NativeID, "project metadata patch deadline; will retry"), nil
 			}
 			return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
 		}
-	} else {
-		// No metadata change — read current state so the response carries
-		// it back to formae.
-		if err := p.Client.Do(callCtx, supatransport.Request{
-			Method: "GET", Path: "/v1/projects/" + req.NativeID,
-		}, &apiResp); err != nil {
-			if errors.Is(err, context.DeadlineExceeded) {
-				return p.inProgressUpdate(req.NativeID, "project read deadline; will retry"), nil
-			}
-			return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
+	}
+	// Always GET fresh state — gives us a well-formed projectAPI (ref-string
+	// id, status, created_at) for the response.
+	if err := p.Client.Do(callCtx, supatransport.Request{
+		Method: "GET", Path: "/v1/projects/" + req.NativeID,
+	}, &apiResp); err != nil {
+		if errors.Is(err, context.DeadlineExceeded) {
+			return p.inProgressUpdate(req.NativeID, "project read deadline; will retry"), nil
 		}
+		return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
 	}
 
 	if err := p.applyConfigBlocks(callCtx, req.NativeID, &desired); err != nil {
