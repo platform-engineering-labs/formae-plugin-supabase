@@ -163,11 +163,14 @@ func (b *Branch) Update(ctx context.Context, req *resource.UpdateRequest) (*reso
 }
 
 func (b *Branch) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	prov.Dbg("Branch.Delete nativeID=%s", req.NativeID)
 	_, id, err := prov.ParseTwoPart(req.NativeID)
 	if err != nil {
 		return prov.FailDelete(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	if err := b.Client.Do(ctx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil); err != nil {
+	derr := b.Client.Do(ctx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
+	prov.Dbg("Branch.Delete.done id=%s err=%v", id, derr)
+	if err := derr; err != nil {
 		if supatransport.IsNotFound(err) {
 			return prov.SuccessDelete(req.NativeID), nil
 		}
