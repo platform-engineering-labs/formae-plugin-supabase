@@ -364,7 +364,7 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 	if desired.Name != "" {
 		body["name"] = desired.Name
 	}
-	var apiResp projectAPI = pre
+	apiResp := pre
 	if len(body) > 0 {
 		if err := p.Client.Do(ctx, supatransport.Request{
 			Method: "PATCH", Path: "/v1/projects/" + req.NativeID, Body: body,
