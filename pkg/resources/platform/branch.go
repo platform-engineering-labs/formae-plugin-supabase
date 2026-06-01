@@ -59,6 +59,12 @@ type BranchProperties struct {
 }
 
 const (
+	// Terminal success states. Newer Supabase deployments report the
+	// branch's underlying shadow-project status (ACTIVE_HEALTHY) once
+	// migrations + functions complete; older surfaces still report the
+	// per-phase MIGRATIONS_PASSED/FUNCTIONS_DEPLOYED markers. Accept all
+	// three so the plugin doesn't spin in InProgress.
+	branchStatusActiveHealthy     = "ACTIVE_HEALTHY"
 	branchStatusFunctionsDeployed = "FUNCTIONS_DEPLOYED"
 	branchStatusMigrationsPassed  = "MIGRATIONS_PASSED"
 	branchStatusMigrationsFailed  = "MIGRATIONS_FAILED"
@@ -191,7 +197,7 @@ func (b *Branch) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 	}
 	prov.Dbg("Branch.Status id=%s status=%q", id, p.Status)
 	switch p.Status {
-	case branchStatusFunctionsDeployed, branchStatusMigrationsPassed:
+	case branchStatusActiveHealthy, branchStatusFunctionsDeployed, branchStatusMigrationsPassed:
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				Operation:          resource.OperationCheckStatus,
