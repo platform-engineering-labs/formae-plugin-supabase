@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	"os"
 	"sort"
 	"sync"
 	"time"
@@ -18,6 +19,10 @@ import (
 	supatransport "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/transport/supabase"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
+
+func dbg(format string, args ...any) {
+	fmt.Fprintf(os.Stderr, "[supabase-plugin] "+format+"\n", args...)
+}
 
 const ResourceTypeProject = "SUPABASE::Platform::Project"
 
@@ -335,6 +340,9 @@ func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 }
 
 func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
+	t0 := time.Now()
+	dbg("Update.start nativeID=%s", req.NativeID)
+	defer func() { dbg("Update.end nativeID=%s elapsed=%s", req.NativeID, time.Since(t0)) }()
 	if req.NativeID == "" {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, "native id required"), nil
 	}
@@ -342,6 +350,8 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
+	dbg("Update.desired name=%q hasAuth=%v hasAPI=%v hasDB=%v hasNet=%v",
+		desired.Name, desired.Auth != nil, desired.API != nil, desired.Database != nil, desired.NetworkRestriction != nil)
 
 	// Cap the whole Update call below the harness's 40s
 	// "PluginOperatorMissingInAction" watchdog. Each underlying HTTP call
@@ -357,9 +367,13 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 	}
 	var apiResp projectAPI
 	if len(body) > 0 {
-		if err := p.Client.Do(callCtx, supatransport.Request{
+		dbg("Update.patch.metadata start nativeID=%s body=%v", req.NativeID, body)
+		patchStart := time.Now()
+		err := p.Client.Do(callCtx, supatransport.Request{
 			Method: "PATCH", Path: "/v1/projects/" + req.NativeID, Body: body,
-		}, &apiResp); err != nil {
+		}, &apiResp)
+		dbg("Update.patch.metadata done nativeID=%s elapsed=%s err=%v", req.NativeID, time.Since(patchStart), err)
+		if err != nil {
 			if errors.Is(err, context.DeadlineExceeded) {
 				return p.inProgressUpdate(req.NativeID, "project metadata patch deadline; will retry"), nil
 			}
