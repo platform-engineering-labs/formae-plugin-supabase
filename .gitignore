@@ -53,6 +53,8 @@ CLAUDE.md
 .demo.env
 *.pem
 *.key
+scripts/dev/env.sh
+!scripts/dev/env.example.sh
 
 # Editor scratch
 *.tmp
