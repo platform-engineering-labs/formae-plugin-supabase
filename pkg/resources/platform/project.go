@@ -9,7 +9,6 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
-	"os"
 	"sort"
 	"sync"
 	"time"
@@ -19,10 +18,6 @@ import (
 	supatransport "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/transport/supabase"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
-
-func dbg(format string, args ...any) {
-	fmt.Fprintf(os.Stderr, "[supabase-plugin] "+format+"\n", args...)
-}
 
 const ResourceTypeProject = "SUPABASE::Platform::Project"
 
@@ -341,8 +336,8 @@ func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 
 func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
 	t0 := time.Now()
-	dbg("Update.start nativeID=%s", req.NativeID)
-	defer func() { dbg("Update.end nativeID=%s elapsed=%s", req.NativeID, time.Since(t0)) }()
+	prov.Dbg("Update.start nativeID=%s", req.NativeID)
+	defer func() { prov.Dbg("Update.end nativeID=%s elapsed=%s", req.NativeID, time.Since(t0)) }()
 	if req.NativeID == "" {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, "native id required"), nil
 	}
@@ -350,7 +345,7 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	dbg("Update.desired name=%q hasAuth=%v hasAPI=%v hasDB=%v hasNet=%v",
+	prov.Dbg("Update.desired name=%q hasAuth=%v hasAPI=%v hasDB=%v hasNet=%v",
 		desired.Name, desired.Auth != nil, desired.API != nil, desired.Database != nil, desired.NetworkRestriction != nil)
 
 	// Cap the whole Update call below the harness's 40s

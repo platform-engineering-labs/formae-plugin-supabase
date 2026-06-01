@@ -66,8 +66,10 @@ const (
 )
 
 func (b *Branch) Create(ctx context.Context, req *resource.CreateRequest) (*resource.CreateResult, error) {
+	prov.Dbg("Branch.Create.start")
 	var p BranchProperties
 	if err := json.Unmarshal(req.Properties, &p); err != nil {
+		prov.Dbg("Branch.Create.unmarshal.err %v", err)
 		return prov.FailCreate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
 	if p.ParentProjectRef == "" || p.BranchName == "" {
@@ -84,12 +86,15 @@ func (b *Branch) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 	if p.DesiredInstanceSize != "" {
 		body["desired_instance_size"] = p.DesiredInstanceSize
 	}
+	prov.Dbg("Branch.Create.post.start parent=%s body=%v", p.ParentProjectRef, body)
 	var resp BranchProperties
-	if err := b.Client.Do(ctx, supatransport.Request{
+	err := b.Client.Do(ctx, supatransport.Request{
 		Method: "POST",
 		Path:   "/v1/projects/" + p.ParentProjectRef + "/branches",
 		Body:   body,
-	}, &resp); err != nil {
+	}, &resp)
+	prov.Dbg("Branch.Create.post.done err=%v respID=%q respStatus=%q", err, resp.ID, resp.Status)
+	if err != nil {
 		return prov.FailCreate(supatransport.ClassifyError(err), err.Error()), nil
 	}
 	if resp.ID == "" {
