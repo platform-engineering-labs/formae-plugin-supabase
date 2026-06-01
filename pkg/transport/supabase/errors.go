@@ -43,6 +43,12 @@ func IsNotFound(err error) bool {
 		"Failed to find", "not found", "does not exist") {
 		return true
 	}
+	// Supabase's project API returns 400 'Resource has been removed' for
+	// GET/PATCH/DELETE after a project's been deleted (rather than 404).
+	if apiErr.StatusCode == 400 && containsAny(apiErr.Message,
+		"has been removed", "Resource has been removed", "is being removed") {
+		return true
+	}
 	return false
 }
 
