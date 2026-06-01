@@ -456,17 +456,33 @@ func (p *Project) Status(ctx context.Context, req *resource.StatusRequest) (*res
 	}
 	switch apiResp.Status {
 	case projectStatusActive:
-		// Drain any pending config from Create and apply it. Safe because
-		// Status only reaches this branch once per project lifecycle (after
-		// the project hits ACTIVE for the first time).
+		// Drain any pending config from Create and apply it. Bound the
+		// chain of HTTP calls below the harness's PluginOperatorMissingIn
+		// Action watchdog; if we hit the deadline, return InProgress so
+		// formae's reconciler comes back instead of failing the command.
+		drainCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+		defer cancel()
 		if pending, ok := pendingCreateConfig.LoadAndDelete(ref); ok {
 			pp := pending.(ProjectProperties)
-			if err := p.applyConfigBlocks(ctx, ref, &pp); err != nil {
+			if err := p.applyConfigBlocks(drainCtx, ref, &pp); err != nil {
+				if errors.Is(err, context.DeadlineExceeded) {
+					// Put it back so the next Status retry can finish the job.
+					pendingCreateConfig.Store(ref, pp)
+					return &resource.StatusResult{
+						ProgressResult: &resource.ProgressResult{
+							Operation:       resource.OperationCheckStatus,
+							OperationStatus: resource.OperationStatusInProgress,
+							NativeID:        ref,
+							RequestID:       ref,
+							StatusMessage:   "applying pending config; will retry",
+						},
+					}, nil
+				}
 				return prov.FailStatus(supatransport.ClassifyError(err), err.Error()), nil
 			}
 		}
 		props := apiResp.toProps()
-		p.readConfigBlocks(ctx, ref, &props)
+		p.readConfigBlocks(drainCtx, ref, &props)
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				Operation:          resource.OperationCheckStatus,
