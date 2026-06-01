@@ -189,9 +189,9 @@ jobs:
             # window. Run those on the slower nightly cadence so noise
             # doesn't block push/PR.
             if [ "${{ github.event_name }}" = "schedule" ]; then
-              make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15m
+              make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
             else
-              make conformance-test-crud VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15m
+              make conformance-test-crud VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
             fi
 
   # Aggregate the matrix — single green tick on the PR/branch.

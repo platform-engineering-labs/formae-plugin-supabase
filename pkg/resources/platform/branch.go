@@ -186,8 +186,10 @@ func (b *Branch) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 				ProgressResult: &resource.ProgressResult{Operation: resource.OperationCheckStatus, OperationStatus: resource.OperationStatusSuccess, NativeID: native},
 			}, nil
 		}
+		prov.Dbg("Branch.Status.err id=%s err=%v", id, err)
 		return prov.FailStatus(supatransport.ClassifyError(err), err.Error()), nil
 	}
+	prov.Dbg("Branch.Status id=%s status=%q", id, p.Status)
 	switch p.Status {
 	case branchStatusFunctionsDeployed, branchStatusMigrationsPassed:
 		return &resource.StatusResult{

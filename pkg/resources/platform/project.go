@@ -329,6 +329,14 @@ func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 		}
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: supatransport.ClassifyError(err)}, nil
 	}
+	// Supabase keeps a project visible via GET for a brief window after
+	// DELETE, returning Status=REMOVED. Treat that as gone so formae's
+	// sync prunes the inventory after our (or an OOB) delete.
+	if apiResp.Status == projectStatusRemoved {
+		managedKeysCache.Delete(req.NativeID)
+		pendingCreateConfig.Delete(req.NativeID)
+		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
+	}
 	props := apiResp.toProps()
 	p.readConfigBlocks(ctx, req.NativeID, &props)
 	return &resource.ReadResult{ResourceType: req.ResourceType, Properties: string(prov.MustMarshal(props))}, nil
@@ -547,9 +555,10 @@ func (p *Project) List(ctx context.Context, req *resource.ListRequest) (*resourc
 	}
 	ids := make([]string, 0, len(projects))
 	for _, pr := range projects {
-		if pr.ID != "" {
-			ids = append(ids, pr.ID)
+		if pr.ID == "" || pr.Status == projectStatusRemoved {
+			continue
 		}
+		ids = append(ids, pr.ID)
 	}
 	return &resource.ListResult{NativeIDs: ids}, nil
 }
