@@ -24,5 +24,14 @@ forma {
     region = v.region
     dbPass = v.dbPass
     plan = "free"
+
+    // Nested config block — applied via PATCH /postgrest once the
+    // project reaches ACTIVE_HEALTHY. Lifecycle owned by Project.
+    api = new supabase.ProjectAPIConfig {
+      settings = new Mapping {
+        ["db_schema"] = "public"
+        ["max_rows"] = 1000
+      }
+    }
   }
 }

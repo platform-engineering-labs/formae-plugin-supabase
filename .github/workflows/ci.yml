@@ -113,11 +113,9 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          # Every resource in testdata/ runs in CI. The 4 singleton config
-          # resources (*-settings, network-restriction) are marked
-          # continue-on-error in the matrix below: their underlying API has
-          # no DELETE, so the harness's OOB-delete phase always fails.
-          # Needs an upstream skip-OOB-delete / singleton-mode flag.
+          # Every resource in testdata/ runs in CI. All matrix entries are
+          # hard gates — singletons that lacked Delete were folded into
+          # SUPABASE::Platform::Project as nested config blocks.
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \
@@ -133,9 +131,9 @@ jobs:
     needs: [discover-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Singletons remain flagged: underlying API has no DELETE so harness
-    # OOB-delete phase always fails. Needs upstream skip-OOB-delete flag.
-    continue-on-error: ${{ contains(fromJson('["api-settings","auth-settings","database-settings","network-restriction"]'), matrix.test-case) }}
+    # All remaining resources are full CRUD against API endpoints that
+    # support DELETE — every matrix entry is a hard gate.
+    continue-on-error: false
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}

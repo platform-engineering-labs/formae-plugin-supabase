@@ -21,5 +21,12 @@ forma {
     region = v.region
     dbPass = v.dbPass
     plan = "free"
+
+    api = new supabase.ProjectAPIConfig {
+      settings = new Mapping {
+        ["db_schema"] = "public"
+        ["max_rows"] = 2000                            // CHANGED
+      }
+    }
   }
 }
