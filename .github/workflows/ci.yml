@@ -83,7 +83,9 @@ jobs:
         run: make verify-schema
 
   # ------------------------------------------------------------------
-  # Live conformance tests — runs on schedule + workflow_dispatch only.
+  # Live conformance tests — run on every same-repo PR, push to main,
+  # nightly schedule, and manual dispatch. Fork PRs are skipped because
+  # GitHub strips secrets from them.
   # ------------------------------------------------------------------
 
   # Discover one matrix entry per `testdata/<name>.pkl` (excluding -update
