@@ -386,8 +386,11 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 	}
 	recordManagedKeys(req.NativeID, &desired)
 
+	// Mirror desired blocks directly into the response. We just PATCHed
+	// them, so the cloud is authoritatively at those values; doing another
+	// round of GETs only adds latency (and can re-trip the 35s deadline).
 	props := apiResp.toProps()
-	p.readConfigBlocks(callCtx, req.NativeID, &props)
+	mirrorDesiredBlocks(&desired, &props)
 	return &resource.UpdateResult{
 		ProgressResult: &resource.ProgressResult{
 			Operation:          resource.OperationUpdate,
@@ -396,6 +399,22 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 			ResourceProperties: prov.MustMarshal(props),
 		},
 	}, nil
+}
+
+// mirrorDesiredBlocks copies any non-nil block from src into dst.
+func mirrorDesiredBlocks(src, dst *ProjectProperties) {
+	if src.Auth != nil {
+		dst.Auth = src.Auth
+	}
+	if src.API != nil {
+		dst.API = src.API
+	}
+	if src.Database != nil {
+		dst.Database = src.Database
+	}
+	if src.NetworkRestriction != nil {
+		dst.NetworkRestriction = src.NetworkRestriction
+	}
 }
 
 func (p *Project) inProgressUpdate(nativeID, msg string) *resource.UpdateResult {
@@ -462,6 +481,7 @@ func (p *Project) Status(ctx context.Context, req *resource.StatusRequest) (*res
 		// formae's reconciler comes back instead of failing the command.
 		drainCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
 		defer cancel()
+		props := apiResp.toProps()
 		if pending, ok := pendingCreateConfig.LoadAndDelete(ref); ok {
 			pp := pending.(ProjectProperties)
 			if err := p.applyConfigBlocks(drainCtx, ref, &pp); err != nil {
@@ -480,9 +500,14 @@ func (p *Project) Status(ctx context.Context, req *resource.StatusRequest) (*res
 				}
 				return prov.FailStatus(supatransport.ClassifyError(err), err.Error()), nil
 			}
+			// Mirror desired into the response: cloud is at those values
+			// because applyConfigBlocks succeeded.
+			mirrorDesiredBlocks(&pp, &props)
+		} else {
+			// No pending operation — read whatever cloud says, filtered
+			// to the managed-keys cache.
+			p.readConfigBlocks(drainCtx, ref, &props)
 		}
-		props := apiResp.toProps()
-		p.readConfigBlocks(drainCtx, ref, &props)
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				Operation:          resource.OperationCheckStatus,
