@@ -111,40 +111,29 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          # Resources excluded from the default matrix:
-          #   branch — Supabase branches require a paid project. The shared
-          #     test project (`SUPABASE_PROJECT_REF`) is free tier.
-          #   organization — the Management API exposes no DELETE for orgs,
-          #     so the harness's OOB-delete step can never succeed.
-          #   project — free-tier projects can sit in transient states
-          #     (UPGRADING, COMING_UP) for 5+ minutes after Create, longer
-          #     than formae's reconciler retry budget. Project.Update is
-          #     guarded with a Status pre-check so the PATCH only fires
-          #     when ACTIVE_HEALTHY, but on slow CI projects we hit the
-          #     poll timeout. Runs cleanly against a paid pre-warmed
-          #     project — use workflow_dispatch -f test_filter=project.
-          #   *-settings, network-restriction — singletons whose
-          #     underlying API has no DELETE. The conformance harness's
-          #     OOB-delete step expects the resource to disappear from
-          #     inventory; we tombstone locally on Delete + return NotFound
-          #     from Read, but formae's sync re-discovers them via List
-          #     (the project ref still exists) and the harness keeps
-          #     seeing the inventory entry. Fundamental mismatch between
-          #     "always-present per-project config" and the harness's
-          #     CRUDable resource assumption — needs a per-key sub-
-          #     resource model or a harness option to skip OOB-del.
+          # Every resource in testdata/ runs in CI. Known-flaky entries are
+          # listed in the matrix's `expected-failure` set below (continue-on-
+          # error) so the aggregate still surfaces real regressions on the
+          # green-path resources.
           #
-          # Override with `workflow_dispatch -f test_filter=<name>` to
-          # force an excluded resource into a run.
-          EXCLUDE='branch|organization|project|api-settings|auth-settings|database-settings|network-restriction'
-
+          # Background on the flaky set:
+          #   branch, project — slow free-tier transitions (5+ min UPGRADING).
+          #     Best run against a paid pre-warmed project; until then, treat
+          #     as best-effort.
+          #   organization — Management API exposes no DELETE; harness's
+          #     OOB-delete phase will always fail.
+          #   *-settings, network-restriction — singletons; underlying API
+          #     has no DELETE. Plugin tombstones locally on Delete + returns
+          #     NotFound on Read, but formae's sync re-discovers via List so
+          #     the harness keeps seeing the inventory entry. Needs an
+          #     upstream skip-OOB-delete / singleton-mode flag.
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \
             | grep -v '\-update\.pkl$' \
             | grep -v '\-replace\.pkl$' \
             | sed 's/\.pkl$//' \
-            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else grep -Ev "^($EXCLUDE)$"; fi; } \
+            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else cat; fi; } \
             | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "Discovered test cases: ${TEST_CASES}"
           echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
@@ -153,6 +142,10 @@ jobs:
     needs: [discover-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 60
+    # Known-flaky entries don't fail the workflow. See discover-tests step
+    # for context on each. Remove from this list once the underlying issue
+    # (paid project, upstream singleton flag, etc.) is resolved.
+    continue-on-error: ${{ contains(fromJson('["branch","project","organization","api-settings","auth-settings","database-settings","network-restriction"]'), matrix.test-case) }}
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
