@@ -7,12 +7,28 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/registry"
 	supatransport "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/transport/supabase"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
+
+// isCannotDeletePersistent reports whether err is the Supabase 422 that
+// blocks DELETE on a branch with persistent=true.
+func isCannotDeletePersistent(err error) bool {
+	var apiErr *supatransport.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.StatusCode != 422 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(apiErr.Message),
+		"cannot delete persistent")
+}
 
 const ResourceTypeBranch = "SUPABASE::Platform::Branch"
 
@@ -170,6 +186,20 @@ func (b *Branch) Delete(ctx context.Context, req *resource.DeleteRequest) (*reso
 	}
 	derr := b.Client.Do(ctx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
 	prov.Dbg("Branch.Delete.done id=%s err=%v", id, derr)
+	// Supabase refuses DELETE on a persistent branch (HTTP 422). Flip
+	// persistent=false via PATCH, then retry the delete.
+	if derr != nil && isCannotDeletePersistent(derr) {
+		prov.Dbg("Branch.Delete unpersist id=%s", id)
+		if perr := b.Client.Do(ctx, supatransport.Request{
+			Method: "PATCH", Path: "/v1/branches/" + id,
+			Body: map[string]any{"persistent": false},
+		}, nil); perr != nil {
+			prov.Dbg("Branch.Delete unpersist.err id=%s err=%v", id, perr)
+			return prov.FailDelete(supatransport.ClassifyError(perr), perr.Error()), nil
+		}
+		derr = b.Client.Do(ctx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
+		prov.Dbg("Branch.Delete.retry id=%s err=%v", id, derr)
+	}
 	if err := derr; err != nil {
 		if supatransport.IsNotFound(err) {
 			return prov.SuccessDelete(req.NativeID), nil
