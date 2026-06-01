@@ -49,6 +49,13 @@ func IsNotFound(err error) bool {
 		"has been removed", "Resource has been removed", "is being removed") {
 		return true
 	}
+	// Once a project's been deleted, subsequent GETs sometimes flip from
+	// 400 "Resource has been removed" to 403 "necessary privileges" while
+	// the control plane reaps it. Treat that as gone too so sync converges.
+	if apiErr.StatusCode == 403 && containsAny(apiErr.Message,
+		"necessary privileges") {
+		return true
+	}
 	return false
 }
 
