@@ -135,23 +135,6 @@ class Branch extends formae.Resource {
 }
 
 // =============================================================================
-// SUPABASE::Platform::Organization
-// =============================================================================
-
-/// A Supabase organization. Update/Delete are unsupported by the API.
-@formae.ResourceHint {
-    type = "SUPABASE::Platform::Organization"
-    identifier = "$.slug"
-    discoverable = true
-}
-class Organization extends formae.Resource {
-    fixed hidden type: String = "SUPABASE::Platform::Organization"
-
-    @formae.FieldHint { requiredOnCreate = true }
-    name: String
-}
-
-// =============================================================================
 // SUPABASE::Auth::APIKey
 // =============================================================================
 

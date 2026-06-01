@@ -111,22 +111,11 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          # Every resource in testdata/ runs in CI. Known-flaky entries are
-          # listed in the matrix's `expected-failure` set below (continue-on-
-          # error) so the aggregate still surfaces real regressions on the
-          # green-path resources.
-          #
-          # Background on the flaky set:
-          #   branch, project — slow free-tier transitions (5+ min UPGRADING).
-          #     Best run against a paid pre-warmed project; until then, treat
-          #     as best-effort.
-          #   organization — Management API exposes no DELETE; harness's
-          #     OOB-delete phase will always fail.
-          #   *-settings, network-restriction — singletons; underlying API
-          #     has no DELETE. Plugin tombstones locally on Delete + returns
-          #     NotFound on Read, but formae's sync re-discovers via List so
-          #     the harness keeps seeing the inventory entry. Needs an
-          #     upstream skip-OOB-delete / singleton-mode flag.
+          # Every resource in testdata/ runs in CI. The 4 singleton config
+          # resources (*-settings, network-restriction) are marked
+          # continue-on-error in the matrix below: their underlying API has
+          # no DELETE, so the harness's OOB-delete phase always fails.
+          # Needs an upstream skip-OOB-delete / singleton-mode flag.
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \
@@ -142,10 +131,9 @@ jobs:
     needs: [discover-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # Known-flaky entries don't fail the workflow. See discover-tests step
-    # for context on each. Remove from this list once the underlying issue
-    # (paid project, upstream singleton flag, etc.) is resolved.
-    continue-on-error: ${{ contains(fromJson('["branch","project","organization","api-settings","auth-settings","database-settings","network-restriction"]'), matrix.test-case) }}
+    # Singletons remain flagged: underlying API has no DELETE so harness
+    # OOB-delete phase always fails. Needs upstream skip-OOB-delete flag.
+    continue-on-error: ${{ contains(fromJson('["api-settings","auth-settings","database-settings","network-restriction"]'), matrix.test-case) }}
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}

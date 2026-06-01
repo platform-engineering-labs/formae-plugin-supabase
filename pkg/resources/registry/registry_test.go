@@ -22,7 +22,6 @@ func TestAllResourceTypesRegistered(t *testing.T) {
 	want := []string{
 		"SUPABASE::Platform::Project",
 		"SUPABASE::Platform::Branch",
-		"SUPABASE::Platform::Organization",
 		"SUPABASE::Auth::APIKey",
 		"SUPABASE::Functions::EdgeFunction",
 		"SUPABASE::Functions::Secret",
