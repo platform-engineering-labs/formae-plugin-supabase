@@ -98,13 +98,16 @@ clean-environment:
 conformance-test: conformance-test-crud conformance-test-discovery
 
 ## conformance-test-crud: Run only CRUD lifecycle tests
-## Usage: make conformance-test-crud [TEST=s3-bucket] [TIMEOUT=30m]
+## Usage: make conformance-test-crud [TEST=s3-bucket] [TIMEOUT=30m] [OP_TIMEOUT=15]
+##   TIMEOUT     — `go test -timeout`, kills the whole test binary.
+##   OP_TIMEOUT  — FORMAE_TEST_TIMEOUT (in minutes), per-operation poll budget;
+##                 needs to be large enough for branch creation (~5–10 min).
 conformance-test-crud: install
 	@echo "Pre-test cleanup..."
 	@./scripts/ci/clean-environment.sh || true
 	@echo ""
 	@echo "Running CRUD conformance tests..."
-	@FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=crud \
+	@FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=crud FORMAE_TEST_TIMEOUT=$(or $(OP_TIMEOUT),15) \
 		$(GO) test -tags=conformance -v -timeout $(or $(TIMEOUT),30m) ./...; \
 	TEST_EXIT=$$?; \
 	echo ""; \
@@ -113,13 +116,13 @@ conformance-test-crud: install
 	exit $$TEST_EXIT
 
 ## conformance-test-discovery: Run only discovery tests
-## Usage: make conformance-test-discovery [TEST=s3-bucket] [TIMEOUT=30m]
+## Usage: make conformance-test-discovery [TEST=s3-bucket] [TIMEOUT=30m] [OP_TIMEOUT=15]
 conformance-test-discovery: install
 	@echo "Pre-test cleanup..."
 	@./scripts/ci/clean-environment.sh || true
 	@echo ""
 	@echo "Running discovery conformance tests..."
-	@FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=discovery \
+	@FORMAE_TEST_FILTER="$(TEST)" FORMAE_TEST_TYPE=discovery FORMAE_TEST_TIMEOUT=$(or $(OP_TIMEOUT),15) \
 		$(GO) test -tags=conformance -v -timeout $(or $(TIMEOUT),30m) ./...; \
 	TEST_EXIT=$$?; \
 	echo ""; \
