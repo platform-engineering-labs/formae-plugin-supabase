@@ -317,6 +317,7 @@ func (p *Project) Create(ctx context.Context, req *resource.CreateRequest) (*res
 }
 
 func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
+	prov.Dbg("Project.Read nativeID=%s", req.NativeID)
 	if req.NativeID == "" {
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeInvalidRequest}, nil
 	}
@@ -325,10 +326,13 @@ func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 		Method: "GET", Path: "/v1/projects/" + req.NativeID,
 	}, &apiResp); err != nil {
 		if supatransport.IsNotFound(err) {
+			prov.Dbg("Project.Read.NotFound nativeID=%s", req.NativeID)
 			return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 		}
+		prov.Dbg("Project.Read.err nativeID=%s err=%v", req.NativeID, err)
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: supatransport.ClassifyError(err)}, nil
 	}
+	prov.Dbg("Project.Read.ok nativeID=%s status=%q", req.NativeID, apiResp.Status)
 	// Supabase keeps a project visible via GET for a brief window after
 	// DELETE, returning Status=REMOVED. Treat that as gone so formae's
 	// sync prunes the inventory after our (or an OOB) delete.
@@ -446,6 +450,7 @@ func (p *Project) inProgressUpdate(nativeID, msg string) *resource.UpdateResult 
 }
 
 func (p *Project) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
+	prov.Dbg("Project.Delete nativeID=%s", req.NativeID)
 	if req.NativeID == "" {
 		return prov.FailDelete(resource.OperationErrorCodeInvalidRequest, "native id required"), nil
 	}
