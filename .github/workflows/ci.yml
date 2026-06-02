@@ -131,9 +131,6 @@ jobs:
     needs: [discover-tests]
     runs-on: ubuntu-latest
     timeout-minutes: 60
-    # All remaining resources are full CRUD against API endpoints that
-    # support DELETE — every matrix entry is a hard gate.
-    continue-on-error: false
     strategy:
       matrix:
         test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}

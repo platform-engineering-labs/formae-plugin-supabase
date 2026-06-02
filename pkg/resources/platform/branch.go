@@ -9,6 +9,7 @@ import (
 	"encoding/json"
 	"errors"
 	"strings"
+	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/registry"
@@ -88,10 +89,8 @@ const (
 )
 
 func (b *Branch) Create(ctx context.Context, req *resource.CreateRequest) (*resource.CreateResult, error) {
-	prov.Dbg("Branch.Create.start")
 	var p BranchProperties
 	if err := json.Unmarshal(req.Properties, &p); err != nil {
-		prov.Dbg("Branch.Create.unmarshal.err %v", err)
 		return prov.FailCreate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
 	if p.ParentProjectRef == "" || p.BranchName == "" {
@@ -108,15 +107,12 @@ func (b *Branch) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 	if p.DesiredInstanceSize != "" {
 		body["desired_instance_size"] = p.DesiredInstanceSize
 	}
-	prov.Dbg("Branch.Create.post.start parent=%s body=%v", p.ParentProjectRef, body)
 	var resp BranchProperties
-	err := b.Client.Do(ctx, supatransport.Request{
+	if err := b.Client.Do(ctx, supatransport.Request{
 		Method: "POST",
 		Path:   "/v1/projects/" + p.ParentProjectRef + "/branches",
 		Body:   body,
-	}, &resp)
-	prov.Dbg("Branch.Create.post.done err=%v respID=%q respStatus=%q", err, resp.ID, resp.Status)
-	if err != nil {
+	}, &resp); err != nil {
 		return prov.FailCreate(supatransport.ClassifyError(err), err.Error()), nil
 	}
 	if resp.ID == "" {
@@ -157,12 +153,39 @@ func (b *Branch) Update(ctx context.Context, req *resource.UpdateRequest) (*reso
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	body := map[string]any{"persistent": desired.Persistent}
+	// Re-parse into a raw map so we can tell which fields the user
+	// actually set vs which are Go zero-values. Patching a field the
+	// user didn't touch is a silent side effect.
+	var raw map[string]any
+	if err := json.Unmarshal(req.DesiredProperties, &raw); err != nil {
+		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
+	}
+
+	body := map[string]any{}
+	if _, ok := raw["persistent"]; ok {
+		body["persistent"] = desired.Persistent
+	}
 	if desired.BranchName != "" {
 		body["branch_name"] = desired.BranchName
 	}
 	if desired.GitBranch != "" {
 		body["git_branch"] = desired.GitBranch
+	}
+	if len(body) == 0 {
+		// No mutable fields touched — return the current cloud state
+		// so formae sees a synchronous success rather than spinning.
+		var cur BranchProperties
+		if err := b.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/branches/" + id}, &cur); err != nil {
+			return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
+		}
+		return &resource.UpdateResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:          resource.OperationUpdate,
+				OperationStatus:    resource.OperationStatusSuccess,
+				NativeID:           req.NativeID,
+				ResourceProperties: prov.MustMarshal(cur),
+			},
+		}, nil
 	}
 	var resp BranchProperties
 	if err := b.Client.Do(ctx, supatransport.Request{Method: "PATCH", Path: "/v1/branches/" + id, Body: body}, &resp); err != nil {
@@ -179,26 +202,27 @@ func (b *Branch) Update(ctx context.Context, req *resource.UpdateRequest) (*reso
 }
 
 func (b *Branch) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	prov.Dbg("Branch.Delete nativeID=%s", req.NativeID)
 	_, id, err := prov.ParseTwoPart(req.NativeID)
 	if err != nil {
 		return prov.FailDelete(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	derr := b.Client.Do(ctx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
-	prov.Dbg("Branch.Delete.done id=%s err=%v", id, derr)
+	// Bound the whole call below the harness's 40s "PluginOperatorMissing
+	// InAction" watchdog. Worst case is DELETE + PATCH + DELETE = up to
+	// three 30s HTTP timeouts (≈90s) — would otherwise look like a hang.
+	callCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+
+	derr := b.Client.Do(callCtx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
 	// Supabase refuses DELETE on a persistent branch (HTTP 422). Flip
 	// persistent=false via PATCH, then retry the delete.
 	if derr != nil && isCannotDeletePersistent(derr) {
-		prov.Dbg("Branch.Delete unpersist id=%s", id)
-		if perr := b.Client.Do(ctx, supatransport.Request{
+		if perr := b.Client.Do(callCtx, supatransport.Request{
 			Method: "PATCH", Path: "/v1/branches/" + id,
 			Body: map[string]any{"persistent": false},
 		}, nil); perr != nil {
-			prov.Dbg("Branch.Delete unpersist.err id=%s err=%v", id, perr)
 			return prov.FailDelete(supatransport.ClassifyError(perr), perr.Error()), nil
 		}
-		derr = b.Client.Do(ctx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
-		prov.Dbg("Branch.Delete.retry id=%s err=%v", id, derr)
+		derr = b.Client.Do(callCtx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
 	}
 	if err := derr; err != nil {
 		if supatransport.IsNotFound(err) {
@@ -225,10 +249,8 @@ func (b *Branch) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 				ProgressResult: &resource.ProgressResult{Operation: resource.OperationCheckStatus, OperationStatus: resource.OperationStatusSuccess, NativeID: native},
 			}, nil
 		}
-		prov.Dbg("Branch.Status.err id=%s err=%v", id, err)
 		return prov.FailStatus(supatransport.ClassifyError(err), err.Error()), nil
 	}
-	prov.Dbg("Branch.Status id=%s status=%q", id, p.Status)
 	switch p.Status {
 	case branchStatusActiveHealthy, branchStatusFunctionsDeployed, branchStatusMigrationsPassed:
 		return &resource.StatusResult{

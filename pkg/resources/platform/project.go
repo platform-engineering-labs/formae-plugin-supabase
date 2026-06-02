@@ -10,6 +10,7 @@ import (
 	"errors"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -118,6 +119,39 @@ const (
 	projectStatusRemoved    = "REMOVED"
 )
 
+// isProjectGone reports whether an API error from a /v1/projects/{ref}
+// call means the project no longer exists. Scoped to this file (not
+// pkg/transport/supabase.IsNotFound) because the 400/403 message patterns
+// overlap with real "bad request" / "permission revoked" responses on
+// other endpoints, where treating them as NotFound would silently nuke
+// inventory on the next sync.
+//
+// Supabase's project lifecycle returns three different non-404 shapes
+// for a deleted project, depending on how far the reaper has progressed:
+//
+//   - HTTP 400 'Resource has been removed'   (immediately after DELETE)
+//   - HTTP 403 'necessary privileges'        (post-reap auth-check fires)
+//   - HTTP 404                               (terminal state, classified
+//                                             by supatransport.IsNotFound)
+func isProjectGone(err error) bool {
+	var apiErr *supatransport.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	switch apiErr.StatusCode {
+	case 400:
+		return containsFold(apiErr.Message, "Resource has been removed") ||
+			containsFold(apiErr.Message, "is being removed")
+	case 403:
+		return containsFold(apiErr.Message, "necessary privileges")
+	}
+	return false
+}
+
+func containsFold(s, sub string) bool {
+	return strings.Contains(strings.ToLower(s), strings.ToLower(sub))
+}
+
 // configBinding ties a nested block to its API endpoint.
 type configBinding struct {
 	name        string // identifier used in cache + error messages
@@ -125,28 +159,35 @@ type configBinding struct {
 	writeMethod string
 	get         func(*ProjectProperties) *ConfigBlock
 	set         func(*ProjectProperties, *ConfigBlock)
+	// keysSlot returns the address of the per-binding keys field on a
+	// projectManagedKeys so applyConfigBlocks can record incrementally.
+	keysSlot func(*projectManagedKeys) *map[string]struct{}
 }
 
 var configBindings = []configBinding{
 	{
 		name: "auth", pathSuffix: "/config/auth", writeMethod: "PATCH",
-		get: func(p *ProjectProperties) *ConfigBlock { return p.Auth },
-		set: func(p *ProjectProperties, b *ConfigBlock) { p.Auth = b },
+		get:      func(p *ProjectProperties) *ConfigBlock { return p.Auth },
+		set:      func(p *ProjectProperties, b *ConfigBlock) { p.Auth = b },
+		keysSlot: func(mk *projectManagedKeys) *map[string]struct{} { return &mk.auth },
 	},
 	{
 		name: "api", pathSuffix: "/postgrest", writeMethod: "PATCH",
-		get: func(p *ProjectProperties) *ConfigBlock { return p.API },
-		set: func(p *ProjectProperties, b *ConfigBlock) { p.API = b },
+		get:      func(p *ProjectProperties) *ConfigBlock { return p.API },
+		set:      func(p *ProjectProperties, b *ConfigBlock) { p.API = b },
+		keysSlot: func(mk *projectManagedKeys) *map[string]struct{} { return &mk.api },
 	},
 	{
 		name: "database", pathSuffix: "/config/database/postgres", writeMethod: "PUT",
-		get: func(p *ProjectProperties) *ConfigBlock { return p.Database },
-		set: func(p *ProjectProperties, b *ConfigBlock) { p.Database = b },
+		get:      func(p *ProjectProperties) *ConfigBlock { return p.Database },
+		set:      func(p *ProjectProperties, b *ConfigBlock) { p.Database = b },
+		keysSlot: func(mk *projectManagedKeys) *map[string]struct{} { return &mk.database },
 	},
 	{
 		name: "networkRestriction", pathSuffix: "/network-restrictions", writeMethod: "PATCH",
-		get: func(p *ProjectProperties) *ConfigBlock { return p.NetworkRestriction },
-		set: func(p *ProjectProperties, b *ConfigBlock) { p.NetworkRestriction = b },
+		get:      func(p *ProjectProperties) *ConfigBlock { return p.NetworkRestriction },
+		set:      func(p *ProjectProperties, b *ConfigBlock) { p.NetworkRestriction = b },
+		keysSlot: func(mk *projectManagedKeys) *map[string]struct{} { return &mk.networkRestriction },
 	},
 }
 
@@ -157,6 +198,18 @@ var configBindings = []configBinding{
 // Process-local: a plugin restart loses the cache. Read then returns the
 // full cloud config until the next Update repopulates it. Self-healing,
 // at the cost of one bogus drift reconcile after a restart.
+//
+// Caveats worth knowing before relying on this for production rollouts:
+//
+//   - Restart amnesia: agents that respawn the plugin between Update and
+//     the next Read will see drift until the user re-applies. Acceptable
+//     today; if it becomes a problem, persist the cache to disk under the
+//     agent state dir.
+//   - Mirror over GET-back: Update writes desired blocks straight into the
+//     response (see mirrorDesiredBlocks) instead of GET-ing each block
+//     after PATCH. This trades latency for accuracy — server-side clamping
+//     (e.g. Postgres rounding `max_connections`) is invisible until the
+//     next reconcile when readConfigBlocks fetches fresh values.
 type projectManagedKeys struct {
 	auth, api, database, networkRestriction map[string]struct{}
 }
@@ -166,6 +219,12 @@ var managedKeysCache sync.Map // projectID → *projectManagedKeys
 // pendingCreateConfig holds the desired config blocks captured during Create
 // so Status can apply them once the project reaches ACTIVE_HEALTHY. PATCH
 // against a still-transitioning project gets rejected by the API.
+//
+// Lifecycle hole: this map is also process-local. If the plugin process
+// restarts between Create returning InProgress and Status reaching the
+// ACTIVE branch for the first time, the pending config silently no-ops.
+// The user's next reconcile will detect drift (forma has blocks, Read
+// returns none) and trigger an Update — recoverable, just slower.
 var pendingCreateConfig sync.Map // projectID → ProjectProperties
 
 func keysOf(m map[string]any) map[string]struct{} {
@@ -179,20 +238,36 @@ func keysOf(m map[string]any) map[string]struct{} {
 	return out
 }
 
+// recordManagedKeys replaces the cache entry for projectID with the keys
+// from every non-nil block in p. Use at Create time when no blocks have
+// been PATCHed yet; for Update, prefer recordManagedKeysForBlock so a
+// partial-success Update doesn't leave a stale cache.
 func recordManagedKeys(projectID string, p *ProjectProperties) {
 	mk := &projectManagedKeys{}
-	if p.Auth != nil {
-		mk.auth = keysOf(p.Auth.Settings)
+	for _, b := range configBindings {
+		blk := b.get(p)
+		if blk == nil {
+			continue
+		}
+		*b.keysSlot(mk) = keysOf(blk.Settings)
 	}
-	if p.API != nil {
-		mk.api = keysOf(p.API.Settings)
+	managedKeysCache.Store(projectID, mk)
+}
+
+// recordManagedKeysForBlock merges the keys from a single block into the
+// existing cache entry. Called per successful PATCH inside
+// applyConfigBlocks so a deadline-exceeded retry doesn't wipe state for
+// blocks already committed in this pass.
+func recordManagedKeysForBlock(projectID string, b configBinding, blk *ConfigBlock) {
+	if blk == nil {
+		return
 	}
-	if p.Database != nil {
-		mk.database = keysOf(p.Database.Settings)
+	prev, _ := managedKeysCache.Load(projectID)
+	mk, _ := prev.(*projectManagedKeys)
+	if mk == nil {
+		mk = &projectManagedKeys{}
 	}
-	if p.NetworkRestriction != nil {
-		mk.networkRestriction = keysOf(p.NetworkRestriction.Settings)
-	}
+	*b.keysSlot(mk) = keysOf(blk.Settings)
 	managedKeysCache.Store(projectID, mk)
 }
 
@@ -226,16 +301,7 @@ func (p *Project) readConfigBlocks(ctx context.Context, projectID string, out *P
 	for _, b := range configBindings {
 		var keep map[string]struct{}
 		if keys != nil {
-			switch b.name {
-			case "auth":
-				keep = keys.auth
-			case "api":
-				keep = keys.api
-			case "database":
-				keep = keys.database
-			case "networkRestriction":
-				keep = keys.networkRestriction
-			}
+			keep = *b.keysSlot(keys)
 		}
 		if len(keep) == 0 {
 			continue
@@ -253,8 +319,9 @@ func (p *Project) readConfigBlocks(ctx context.Context, projectID string, out *P
 	}
 }
 
-// applyConfigBlocks writes every non-nil block to its endpoint. Returns the
-// first error encountered.
+// applyConfigBlocks writes every non-nil block to its endpoint, recording
+// managed keys incrementally so a deadline-exceeded retry doesn't clobber
+// state for blocks already committed in this pass.
 func (p *Project) applyConfigBlocks(ctx context.Context, projectID string, props *ProjectProperties) error {
 	for _, b := range configBindings {
 		block := b.get(props)
@@ -268,6 +335,7 @@ func (p *Project) applyConfigBlocks(ctx context.Context, projectID string, props
 		}, nil); err != nil {
 			return fmt.Errorf("%s config patch: %w", b.name, err)
 		}
+		recordManagedKeysForBlock(projectID, b, block)
 	}
 	return nil
 }
@@ -317,7 +385,6 @@ func (p *Project) Create(ctx context.Context, req *resource.CreateRequest) (*res
 }
 
 func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
-	prov.Dbg("Project.Read nativeID=%s", req.NativeID)
 	if req.NativeID == "" {
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeInvalidRequest}, nil
 	}
@@ -325,14 +392,13 @@ func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 	if err := p.Client.Do(ctx, supatransport.Request{
 		Method: "GET", Path: "/v1/projects/" + req.NativeID,
 	}, &apiResp); err != nil {
-		if supatransport.IsNotFound(err) {
-			prov.Dbg("Project.Read.NotFound nativeID=%s", req.NativeID)
+		if supatransport.IsNotFound(err) || isProjectGone(err) {
+			managedKeysCache.Delete(req.NativeID)
+			pendingCreateConfig.Delete(req.NativeID)
 			return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 		}
-		prov.Dbg("Project.Read.err nativeID=%s err=%v", req.NativeID, err)
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: supatransport.ClassifyError(err)}, nil
 	}
-	prov.Dbg("Project.Read.ok nativeID=%s status=%q", req.NativeID, apiResp.Status)
 	// Supabase keeps a project visible via GET for a brief window after
 	// DELETE, returning Status=REMOVED. Treat that as gone so formae's
 	// sync prunes the inventory after our (or an OOB) delete.
@@ -347,9 +413,6 @@ func (p *Project) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 }
 
 func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	t0 := time.Now()
-	prov.Dbg("Update.start nativeID=%s", req.NativeID)
-	defer func() { prov.Dbg("Update.end nativeID=%s elapsed=%s", req.NativeID, time.Since(t0)) }()
 	if req.NativeID == "" {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, "native id required"), nil
 	}
@@ -357,8 +420,6 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	prov.Dbg("Update.desired name=%q hasAuth=%v hasAPI=%v hasDB=%v hasNet=%v",
-		desired.Name, desired.Auth != nil, desired.API != nil, desired.Database != nil, desired.NetworkRestriction != nil)
 
 	// Cap the whole Update call below the harness's 40s
 	// "PluginOperatorMissingInAction" watchdog. Each underlying HTTP call
@@ -404,7 +465,8 @@ func (p *Project) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 		}
 		return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
 	}
-	recordManagedKeys(req.NativeID, &desired)
+	// applyConfigBlocks records managed keys incrementally per success;
+	// no need to overwrite the whole cache here.
 
 	// Mirror desired blocks directly into the response. We just PATCHed
 	// them, so the cloud is authoritatively at those values; doing another
@@ -450,7 +512,6 @@ func (p *Project) inProgressUpdate(nativeID, msg string) *resource.UpdateResult 
 }
 
 func (p *Project) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	prov.Dbg("Project.Delete nativeID=%s", req.NativeID)
 	if req.NativeID == "" {
 		return prov.FailDelete(resource.OperationErrorCodeInvalidRequest, "native id required"), nil
 	}
@@ -481,7 +542,7 @@ func (p *Project) Status(ctx context.Context, req *resource.StatusRequest) (*res
 	if err := p.Client.Do(ctx, supatransport.Request{
 		Method: "GET", Path: "/v1/projects/" + ref,
 	}, &apiResp); err != nil {
-		if supatransport.IsNotFound(err) {
+		if supatransport.IsNotFound(err) || isProjectGone(err) {
 			managedKeysCache.Delete(ref)
 			pendingCreateConfig.Delete(ref)
 			return &resource.StatusResult{
