@@ -88,13 +88,70 @@ make apply-phase2
 
 ## 4. Hit it
 
+Three ways to reach the pod depending on how much cluster machinery
+you want to install.
+
+### Option A — port-forward (default, no DNS or extra controllers)
+
 ```bash
 # in one terminal:
 make port-forward       # kubectl -n edge-k8s-demo port-forward svc/edge-k8s-demo 8080:80
 
 # in another:
 make curl               # curl http://localhost:8080
+# or just:
+open http://localhost:8080
 ```
+
+### Option B — flip the Service to `LoadBalancer` (orbstack one-liner)
+
+Orbstack auto-exposes `LoadBalancer`-type services at a Mac-reachable
+IP. Edit `forma.pkl`:
+
+```pkl
+new svc.Service {
+  ...
+  spec {
+    type = "LoadBalancer"     // <-- add
+    selector = appLabels
+    ports { new { port = 80; targetPort = 8080 } }
+  }
+}
+```
+
+Re-apply, then:
+
+```bash
+kubectl -n edge-k8s-demo get svc edge-k8s-demo \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}{"\n"}'
+open http://<that-IP>
+```
+
+Cluster-dependent: kind needs MetalLB, EKS/GKE/AKS provision a real
+cloud load balancer (cost + minutes), minikube wants `minikube tunnel`.
+
+### Option C — install ingress-nginx and use the existing `Ingress`
+
+Heaviest, matches what production looks like. The `Ingress` resource
+the forma creates is unused until a controller picks it up.
+
+```bash
+helm repo add ingress-nginx https://kubernetes.github.io/ingress-nginx
+helm install ingress-nginx ingress-nginx/ingress-nginx \
+  -n ingress-nginx --create-namespace
+# wait for the controller's LoadBalancer IP to appear:
+kubectl -n ingress-nginx get svc ingress-nginx-controller -w
+# then map the demo host to it:
+ADDR=$(kubectl get ingress -n edge-k8s-demo edge-k8s-demo \
+  -o jsonpath='{.status.loadBalancer.ingress[0].ip}')
+echo "$ADDR edge-k8s-demo.local" | sudo tee -a /etc/hosts
+open http://edge-k8s-demo.local
+```
+
+Why `ClusterIP` is the default: keeps the demo runnable on any cluster
+without assuming an ingress controller or cloud LB integration. The
+`Ingress` resource is there to show the forma layer; activating it is
+a per-cluster ops decision.
 
 Expected output:
 
