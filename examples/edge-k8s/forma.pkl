@@ -1,0 +1,229 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// k8s ⇄ Supabase end-to-end demo using the post-refactor schema
+// (Project-nested config blocks, no standalone ::Config:: resources).
+//
+// What it does in a single `formae apply`:
+//   1. Mints a publishable API key on an existing Supabase project
+//      (SUPABASE::Auth::APIKey).
+//   2. Deploys an Edge Function that returns JSON
+//      (SUPABASE::Functions::EdgeFunction).
+//   3. Stamps a k8s Secret carrying the project URL + API key + function
+//      slug (K8S::Core::Secret), backed by SUPABASE_ANON_KEY env shim
+//      until k8s.Secret.stringData drops its strict String typing and
+//      can accept formae.Resolvable cross-plugin references directly.
+//   4. Rolls a Go Deployment + Service + Ingress that hits the Edge
+//      Function on every HTTP request, proving end-to-end wiring.
+//
+// Required env before applying:
+//   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//   export SUPABASE_PROJECT_REF=<existing project ref, e.g. csytcebalsbqfxjxfhtq>
+//   export SUPABASE_ORGANIZATION_ID=<your org>
+//   export DEMO_IMAGE=ghcr.io/your-org/edge-k8s-demo:latest
+//
+// Optional:
+//   export INGRESS_HOST=edge-k8s-demo.local
+//   export SUPABASE_ANON_KEY=<value from a prior apply>   # see README §3
+
+amends "@formae/forma.pkl"
+
+import "@formae/formae.pkl"
+import "@supabase/supabase.pkl"
+
+import "@k8s/k8s.pkl"
+import "@k8s/core/Namespace.pkl" as ns
+import "@k8s/core/Secret.pkl" as ksecret
+import "@k8s/core/Service.pkl" as svc
+import "@k8s/apps/Deployment.pkl" as dep
+import "@k8s/networking/Ingress.pkl" as ing
+
+// -- Env --------------------------------------------------------------------
+
+local supabaseOrg     = read("env:SUPABASE_ORGANIZATION_ID")
+local supabaseProject = read("env:SUPABASE_PROJECT_REF")
+local demoImage       = read("env:DEMO_IMAGE")
+local ingressHost     = read?("env:INGRESS_HOST") ?? "edge-k8s-demo.local"
+
+// Two-phase apply for the anon key (see README). Phase 1 creates the
+// APIKey resource; phase 2 reads its revealed value out of env and
+// seeds the k8s Secret.
+local supabaseAnonKey = read?("env:SUPABASE_ANON_KEY") ?? ""
+
+// -- Constants --------------------------------------------------------------
+
+local appName       = "edge-k8s-demo"
+local nsName        = "edge-k8s-demo"
+local functionSlug  = "edge_k8s_demo_hello"
+local appLabels     = new Mapping<String, String> { ["app"] = appName }
+
+// Tiny Deno-flavoured Edge Function. Returns JSON with the current
+// time + a marker so the k8s pod can prove it talked to the function
+// the plugin just deployed.
+local edgeFunctionBody = """
+Deno.serve(async (req) => {
+  return new Response(
+    JSON.stringify({
+      message: "hello from supabase edge function",
+      slug: "\(functionSlug)",
+      ts: new Date().toISOString(),
+    }),
+    { headers: { "content-type": "application/json" } },
+  );
+});
+"""
+
+forma {
+
+  new formae.Stack {
+    label = "edge-k8s-demo"
+    description = "k8s pod calling a Supabase Edge Function; both plugins in one apply"
+  }
+
+  // -- Targets --------------------------------------------------------------
+
+  local supabaseTarget = new formae.Target {
+    label = "supabase-target"
+    config = new supabase.Config {
+      organizationId = supabaseOrg
+      projectRef     = supabaseProject    // scopes List() to one project
+    }
+  }
+  supabaseTarget
+
+  local k8sTarget = new formae.Target {
+    label = "edge-k8s-cluster"
+    // ~/.kube/config (default context). Swap to k8s.EKSAuth / GKEAuth
+    // for cloud clusters — see the k8s plugin docs.
+    config = new k8s.Config {
+      kubernetesVersion = "1.32"
+      auth = new k8s.KubeconfigAuth {}
+    }
+  }
+  k8sTarget
+
+  // -- Supabase side --------------------------------------------------------
+
+  local anonKey = new supabase.APIKey {
+    label       = "demo-publishable"
+    target      = supabaseTarget.res
+    projectRef  = supabaseProject
+    apikey_type = "publishable"
+    name        = "edge_k8s_demo_publishable"
+    description = "edge-k8s-demo cross-plugin example"
+  }
+  anonKey
+
+  new supabase.EdgeFunction {
+    label       = "demo-edge-function"
+    target      = supabaseTarget.res
+    projectRef  = supabaseProject
+    slug        = functionSlug
+    name        = "edge-k8s-demo hello"
+    body        = edgeFunctionBody
+    verify_jwt  = false  // public anon-key invocation
+  }
+
+  // -- K8s side -------------------------------------------------------------
+
+  new ns.Namespace {
+    label  = "demo-namespace"
+    target = k8sTarget.res
+    metadata {
+      name   = nsName
+      labels { ["managed-by"] = "formae" }
+    }
+  }
+
+  new ksecret.Secret {
+    label  = "demo-supabase-creds"
+    target = k8sTarget.res
+    metadata {
+      name      = "supabase-creds"
+      namespace = nsName
+    }
+    type = "Opaque"
+    stringData {
+      ["SUPABASE_URL"]            = "https://\(supabaseProject).supabase.co"
+      ["SUPABASE_FUNCTION_SLUG"]  = functionSlug
+      // TODO drop env shim once k8s Secret.stringData accepts Resolvable;
+      // then this becomes:  ["SUPABASE_ANON_KEY"] = anonKey.res.apiKey
+      ["SUPABASE_ANON_KEY"]       = supabaseAnonKey
+    }
+  }
+
+  new dep.Deployment {
+    label  = "demo-deployment"
+    target = k8sTarget.res
+    metadata {
+      name      = appName
+      namespace = nsName
+      labels    = appLabels
+    }
+    spec {
+      replicas = 1
+      selector { matchLabels = appLabels }
+      template {
+        metadata {
+          name   = appName
+          labels = appLabels
+        }
+        spec {
+          containers {
+            new {
+              name            = "demo"
+              image           = demoImage
+              imagePullPolicy = "IfNotPresent"
+              ports { new { containerPort = 8080 } }
+              envFrom { new { secretRef { name = "supabase-creds" } } }
+            }
+          }
+        }
+      }
+    }
+  }
+
+  new svc.Service {
+    label  = "demo-service"
+    target = k8sTarget.res
+    metadata {
+      name      = appName
+      namespace = nsName
+    }
+    spec {
+      selector = appLabels
+      ports { new { port = 80; targetPort = 8080 } }
+    }
+  }
+
+  new ing.Ingress {
+    label  = "demo-ingress"
+    target = k8sTarget.res
+    metadata {
+      name      = appName
+      namespace = nsName
+    }
+    spec {
+      rules {
+        new {
+          host = ingressHost
+          http {
+            paths {
+              new {
+                path     = "/"
+                pathType = "Prefix"
+                backend {
+                  service {
+                    name = appName
+                    port { number = 80 }
+                  }
+                }
+              }
+            }
+          }
+        }
+      }
+    }
+  }
+}
