@@ -83,7 +83,9 @@ jobs:
         run: make verify-schema
 
   # ------------------------------------------------------------------
-  # Live conformance tests — runs on schedule + workflow_dispatch only.
+  # Live conformance tests — run on every same-repo PR, push to main,
+  # nightly schedule, and manual dispatch. Fork PRs are skipped because
+  # GitHub strips secrets from them.
   # ------------------------------------------------------------------
 
   # Discover one matrix entry per `testdata/<name>.pkl` (excluding -update
@@ -111,40 +113,16 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          # Resources excluded from the default matrix:
-          #   branch — Supabase branches require a paid project. The shared
-          #     test project (`SUPABASE_PROJECT_REF`) is free tier.
-          #   organization — the Management API exposes no DELETE for orgs,
-          #     so the harness's OOB-delete step can never succeed.
-          #   project — free-tier projects can sit in transient states
-          #     (UPGRADING, COMING_UP) for 5+ minutes after Create, longer
-          #     than formae's reconciler retry budget. Project.Update is
-          #     guarded with a Status pre-check so the PATCH only fires
-          #     when ACTIVE_HEALTHY, but on slow CI projects we hit the
-          #     poll timeout. Runs cleanly against a paid pre-warmed
-          #     project — use workflow_dispatch -f test_filter=project.
-          #   *-settings, network-restriction — singletons whose
-          #     underlying API has no DELETE. The conformance harness's
-          #     OOB-delete step expects the resource to disappear from
-          #     inventory; we tombstone locally on Delete + return NotFound
-          #     from Read, but formae's sync re-discovers them via List
-          #     (the project ref still exists) and the harness keeps
-          #     seeing the inventory entry. Fundamental mismatch between
-          #     "always-present per-project config" and the harness's
-          #     CRUDable resource assumption — needs a per-key sub-
-          #     resource model or a harness option to skip OOB-del.
-          #
-          # Override with `workflow_dispatch -f test_filter=<name>` to
-          # force an excluded resource into a run.
-          EXCLUDE='branch|organization|project|api-settings|auth-settings|database-settings|network-restriction'
-
+          # Every resource in testdata/ runs in CI. All matrix entries are
+          # hard gates — singletons that lacked Delete were folded into
+          # SUPABASE::Platform::Project as nested config blocks.
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \
             | grep -v '\-update\.pkl$' \
             | grep -v '\-replace\.pkl$' \
             | sed 's/\.pkl$//' \
-            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else grep -Ev "^($EXCLUDE)$"; fi; } \
+            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else cat; fi; } \
             | jq -R -s -c 'split("\n") | map(select(length > 0))')
           echo "Discovered test cases: ${TEST_CASES}"
           echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
@@ -208,9 +186,9 @@ jobs:
             # window. Run those on the slower nightly cadence so noise
             # doesn't block push/PR.
             if [ "${{ github.event_name }}" = "schedule" ]; then
-              make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15m
+              make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
             else
-              make conformance-test-crud VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=15m
+              make conformance-test-crud VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
             fi
 
   # Aggregate the matrix — single green tick on the PR/branch.

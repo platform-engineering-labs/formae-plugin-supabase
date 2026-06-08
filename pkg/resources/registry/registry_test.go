@@ -11,7 +11,6 @@ import (
 
 	// Side-effect imports register all resource types.
 	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/auth"
-	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/config"
 	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/functions"
 	_ "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/platform"
 
@@ -22,14 +21,9 @@ func TestAllResourceTypesRegistered(t *testing.T) {
 	want := []string{
 		"SUPABASE::Platform::Project",
 		"SUPABASE::Platform::Branch",
-		"SUPABASE::Platform::Organization",
 		"SUPABASE::Auth::APIKey",
 		"SUPABASE::Functions::EdgeFunction",
 		"SUPABASE::Functions::Secret",
-		"SUPABASE::Config::AuthSettings",
-		"SUPABASE::Config::APISettings",
-		"SUPABASE::Config::DatabaseSettings",
-		"SUPABASE::Config::NetworkRestriction",
 	}
 	for _, rt := range want {
 		if !registry.Has(rt) {

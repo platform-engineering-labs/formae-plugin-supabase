@@ -7,12 +7,29 @@ package platform
 import (
 	"context"
 	"encoding/json"
+	"errors"
+	"strings"
+	"time"
 
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/prov"
 	"github.com/platform-engineering-labs/formae-plugin-supabase/pkg/resources/registry"
 	supatransport "github.com/platform-engineering-labs/formae-plugin-supabase/pkg/transport/supabase"
 	"github.com/platform-engineering-labs/formae/pkg/plugin/resource"
 )
+
+// isCannotDeletePersistent reports whether err is the Supabase 422 that
+// blocks DELETE on a branch with persistent=true.
+func isCannotDeletePersistent(err error) bool {
+	var apiErr *supatransport.APIError
+	if !errors.As(err, &apiErr) {
+		return false
+	}
+	if apiErr.StatusCode != 422 {
+		return false
+	}
+	return strings.Contains(strings.ToLower(apiErr.Message),
+		"cannot delete persistent")
+}
 
 const ResourceTypeBranch = "SUPABASE::Platform::Branch"
 
@@ -59,6 +76,12 @@ type BranchProperties struct {
 }
 
 const (
+	// Terminal success states. Newer Supabase deployments report the
+	// branch's underlying shadow-project status (ACTIVE_HEALTHY) once
+	// migrations + functions complete; older surfaces still report the
+	// per-phase MIGRATIONS_PASSED/FUNCTIONS_DEPLOYED markers. Accept all
+	// three so the plugin doesn't spin in InProgress.
+	branchStatusActiveHealthy     = "ACTIVE_HEALTHY"
 	branchStatusFunctionsDeployed = "FUNCTIONS_DEPLOYED"
 	branchStatusMigrationsPassed  = "MIGRATIONS_PASSED"
 	branchStatusMigrationsFailed  = "MIGRATIONS_FAILED"
@@ -130,12 +153,39 @@ func (b *Branch) Update(ctx context.Context, req *resource.UpdateRequest) (*reso
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	body := map[string]any{"persistent": desired.Persistent}
+	// Re-parse into a raw map so we can tell which fields the user
+	// actually set vs which are Go zero-values. Patching a field the
+	// user didn't touch is a silent side effect.
+	var raw map[string]any
+	if err := json.Unmarshal(req.DesiredProperties, &raw); err != nil {
+		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
+	}
+
+	body := map[string]any{}
+	if _, ok := raw["persistent"]; ok {
+		body["persistent"] = desired.Persistent
+	}
 	if desired.BranchName != "" {
 		body["branch_name"] = desired.BranchName
 	}
 	if desired.GitBranch != "" {
 		body["git_branch"] = desired.GitBranch
+	}
+	if len(body) == 0 {
+		// No mutable fields touched — return the current cloud state
+		// so formae sees a synchronous success rather than spinning.
+		var cur BranchProperties
+		if err := b.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/branches/" + id}, &cur); err != nil {
+			return prov.FailUpdate(supatransport.ClassifyError(err), err.Error()), nil
+		}
+		return &resource.UpdateResult{
+			ProgressResult: &resource.ProgressResult{
+				Operation:          resource.OperationUpdate,
+				OperationStatus:    resource.OperationStatusSuccess,
+				NativeID:           req.NativeID,
+				ResourceProperties: prov.MustMarshal(cur),
+			},
+		}, nil
 	}
 	var resp BranchProperties
 	if err := b.Client.Do(ctx, supatransport.Request{Method: "PATCH", Path: "/v1/branches/" + id, Body: body}, &resp); err != nil {
@@ -156,7 +206,25 @@ func (b *Branch) Delete(ctx context.Context, req *resource.DeleteRequest) (*reso
 	if err != nil {
 		return prov.FailDelete(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	if err := b.Client.Do(ctx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil); err != nil {
+	// Bound the whole call below the harness's 40s "PluginOperatorMissing
+	// InAction" watchdog. Worst case is DELETE + PATCH + DELETE = up to
+	// three 30s HTTP timeouts (≈90s) — would otherwise look like a hang.
+	callCtx, cancel := context.WithTimeout(ctx, 35*time.Second)
+	defer cancel()
+
+	derr := b.Client.Do(callCtx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
+	// Supabase refuses DELETE on a persistent branch (HTTP 422). Flip
+	// persistent=false via PATCH, then retry the delete.
+	if derr != nil && isCannotDeletePersistent(derr) {
+		if perr := b.Client.Do(callCtx, supatransport.Request{
+			Method: "PATCH", Path: "/v1/branches/" + id,
+			Body: map[string]any{"persistent": false},
+		}, nil); perr != nil {
+			return prov.FailDelete(supatransport.ClassifyError(perr), perr.Error()), nil
+		}
+		derr = b.Client.Do(callCtx, supatransport.Request{Method: "DELETE", Path: "/v1/branches/" + id}, nil)
+	}
+	if err := derr; err != nil {
 		if supatransport.IsNotFound(err) {
 			return prov.SuccessDelete(req.NativeID), nil
 		}
@@ -184,7 +252,7 @@ func (b *Branch) Status(ctx context.Context, req *resource.StatusRequest) (*reso
 		return prov.FailStatus(supatransport.ClassifyError(err), err.Error()), nil
 	}
 	switch p.Status {
-	case branchStatusFunctionsDeployed, branchStatusMigrationsPassed:
+	case branchStatusActiveHealthy, branchStatusFunctionsDeployed, branchStatusMigrationsPassed:
 		return &resource.StatusResult{
 			ProgressResult: &resource.ProgressResult{
 				Operation:          resource.OperationCheckStatus,
