@@ -168,6 +168,15 @@ forma {
         metadata {
           name   = appName
           labels = appLabels
+          // Track a fingerprint of the anon key in pod-template metadata
+          // so phase-2 (which only changes the Secret content) also
+          // triggers a deployment rollout. `envFrom: secretRef` does
+          // NOT auto-reload a Secret on change; the pod must be
+          // re-created to see the new env vars.
+          annotations {
+            ["formae.io/anon-key-fingerprint"] =
+              if (supabaseAnonKey == "") "phase-1-empty" else supabaseAnonKey.substring(0, 12)
+          }
         }
         spec {
           containers {

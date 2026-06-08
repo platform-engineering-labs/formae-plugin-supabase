@@ -22,30 +22,43 @@ import (
 	"time"
 )
 
-func mustEnv(k string) string {
-	v := os.Getenv(k)
-	if v == "" {
-		log.Fatalf("env %s must be set (sourced from k8s Secret)", k)
-	}
-	return v
-}
-
 func main() {
-	url := mustEnv("SUPABASE_URL")
-	key := mustEnv("SUPABASE_ANON_KEY")
-	slug := mustEnv("SUPABASE_FUNCTION_SLUG")
+	url := os.Getenv("SUPABASE_URL")
+	key := os.Getenv("SUPABASE_ANON_KEY")
+	slug := os.Getenv("SUPABASE_FUNCTION_SLUG")
 	addr := ":8080"
 
-	endpoint := fmt.Sprintf("%s/functions/v1/%s", url, slug)
-	log.Printf("calling edge function: %s", endpoint)
+	// Empty anon key = phase-1 of the two-phase apply (k8s Secret stamped
+	// with a blank value while formae waits for the user to seed it).
+	// Don't crash — render a placeholder so the Deployment goes Ready
+	// and the apply reaches Success. Phase-2 swaps the Secret value and
+	// the rolling restart picks up the real key without disturbing the
+	// rest of the stack.
+	if key == "" || url == "" {
+		log.Printf("startup: SUPABASE_ANON_KEY or SUPABASE_URL empty — running in placeholder mode")
+	} else {
+		log.Printf("startup: calling edge function at %s/functions/v1/%s", url, slug)
+	}
 
 	http.HandleFunc("/", func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+		fmt.Fprintf(w, "edge-k8s-demo\n=============\n")
+		fmt.Fprintf(w, "supabase url:   %s\n", orPlaceholder(url))
+		fmt.Fprintf(w, "function slug:  %s\n", orPlaceholder(slug))
+		fmt.Fprintf(w, "anon key:       %s\n", keyState(key))
+
+		if url == "" || key == "" || slug == "" {
+			fmt.Fprintf(w, "\nplaceholder mode — phase-2 of the two-phase apply hasn't\n")
+			fmt.Fprintf(w, "seeded the k8s Secret yet. Run: make apply\n")
+			return
+		}
+
+		endpoint := fmt.Sprintf("%s/functions/v1/%s", url, slug)
 		ctx, cancel := context.WithTimeout(r.Context(), 5*time.Second)
 		defer cancel()
-
 		req, err := http.NewRequestWithContext(ctx, "POST", endpoint, nil)
 		if err != nil {
-			http.Error(w, "build request: "+err.Error(), 500)
+			fmt.Fprintf(w, "\nbuild request error: %v\n", err)
 			return
 		}
 		req.Header.Set("Authorization", "Bearer "+key)
@@ -53,18 +66,11 @@ func main() {
 
 		resp, err := http.DefaultClient.Do(req)
 		if err != nil {
-			http.Error(w, "edge call: "+err.Error(), 502)
+			fmt.Fprintf(w, "\nedge call error: %v\n", err)
 			return
 		}
 		defer resp.Body.Close()
 		body, _ := io.ReadAll(resp.Body)
-
-		w.Header().Set("Content-Type", "text/plain; charset=utf-8")
-		fmt.Fprintf(w, "edge-k8s-demo\n")
-		fmt.Fprintf(w, "=============\n")
-		fmt.Fprintf(w, "supabase url: %s\n", url)
-		fmt.Fprintf(w, "function slug: %s\n", slug)
-		fmt.Fprintf(w, "anon key prefix: %s...\n", safePrefix(key, 18))
 		fmt.Fprintf(w, "\nedge function HTTP %d:\n%s\n", resp.StatusCode, body)
 	})
 
@@ -76,9 +82,19 @@ func main() {
 	log.Fatal(http.ListenAndServe(addr, nil))
 }
 
-func safePrefix(s string, n int) string {
-	if len(s) <= n {
+func orPlaceholder(s string) string {
+	if s == "" {
+		return "<unset — phase 1 placeholder>"
+	}
+	return s
+}
+
+func keyState(s string) string {
+	if s == "" {
+		return "<unset — phase 1 placeholder>"
+	}
+	if len(s) <= 18 {
 		return s
 	}
-	return s[:n]
+	return s[:18] + "…"
 }
