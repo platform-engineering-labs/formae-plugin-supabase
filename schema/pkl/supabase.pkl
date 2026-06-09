@@ -21,20 +21,19 @@ import "@formae/formae.pkl"
 open class Config {
     hidden fixed type: String = "SUPABASE"
 
-    /// Default organization for Project creation when not specified per resource.
-    organizationId: String?
-
     /// Override base URL. Defaults to https://api.supabase.com.
     baseUrl: String? = null
 
-    /// Optional project ref to scope `List()` and discovery to a single
-    /// Supabase project. Without it, every project the PAT can see is
-    /// walked — slow on large orgs and can time out the conformance
-    /// harness's 2-minute discovery window.
+    /// Advanced / conformance-only. Scopes sub-resource `List()` and
+    /// discovery (Branch, APIKey, EdgeFunction, Secret) to a single
+    /// Supabase project. Leave unset in normal use — discovery then walks
+    /// every project the PAT can see. The conformance suite sets it to
+    /// keep sub-resource discovery within the harness's 2-minute window;
+    /// production targets should omit it. Project discovery is always
+    /// global regardless of this field.
     projectRef: String? = null
 
     fixed Type: String = type
-    fixed OrganizationId: String? = organizationId
     fixed BaseUrl: String? = baseUrl
     fixed ProjectRef: String? = projectRef
 }
@@ -75,13 +74,17 @@ class Project extends formae.Resource {
     region: String
 
     /// Initial Postgres password. >= 8 chars.
-    /// Send-only — never returned by the API.
+    /// Send-only — never returned by the API. Declared nullable on purpose:
+    /// the schema extractor marks every non-nullable, no-default field as
+    /// `Required`, and discovery rejects any resource whose `Required` fields
+    /// aren't present in the Read response. Since the API never echoes the
+    /// password, a non-nullable `dbPass` makes every existing project
+    /// undiscoverable. Create() enforces presence in Go instead.
     @formae.FieldHint {
         createOnly = true
-        requiredOnCreate = true
         writeOnly = true
     }
-    dbPass: String
+    dbPass: String?
 
     /// Pricing plan ("free", "pro", "team", "enterprise").
     @formae.FieldHint {}
@@ -263,9 +266,12 @@ class EdgeFunction extends formae.Resource {
     @formae.FieldHint { requiredOnCreate = true }
     name: String
 
-    /// Inline TypeScript/JavaScript source body (Deno).
-    @formae.FieldHint { requiredOnCreate = true }
-    body: String
+    /// Inline TypeScript/JavaScript source body (Deno). Nullable on purpose:
+    /// the extractor marks non-nullable, no-default fields as `Required`, and
+    /// the API never returns the source on Read, so a non-nullable `body`
+    /// makes existing functions undiscoverable. Create() enforces presence.
+    @formae.FieldHint {}
+    body: String?
 
     /// Whether to verify the JWT before invocation.
     @formae.FieldHint {}
@@ -299,11 +305,14 @@ class Secret extends formae.Resource {
     }
     name: String
 
-    /// Secret value. Send-only.
+    /// Secret value. Send-only — never returned by the API. Nullable on
+    /// purpose: the extractor marks non-nullable, no-default fields as
+    /// `Required`, and discovery rejects resources whose `Required` fields
+    /// are absent from Read. A non-nullable `value` makes existing secrets
+    /// undiscoverable. Create() enforces presence in Go.
     @formae.FieldHint {
-        requiredOnCreate = true
         writeOnly = true
     }
-    value: String
+    value: String?
 }
 

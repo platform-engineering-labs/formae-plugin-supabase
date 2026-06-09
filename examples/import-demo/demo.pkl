@@ -30,9 +30,7 @@ forma {
 
     local supabaseTarget = new formae.Target {
         label = "supabase-target"
-        config = new supabase.Config {
-            organizationId = read?("env:SUPABASE_ORGANIZATION_ID") ?? "REDACTED_ORG_ID"
-        }
+        config = new supabase.Config {}
     }
     supabaseTarget
 

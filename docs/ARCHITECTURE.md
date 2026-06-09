@@ -36,9 +36,7 @@ Bearer Personal Access Token. Read from environment:
 Target config carries no secret — just deployment metadata:
 
 ```pkl
-config = new Config {
-    organizationId = "abcdefg"  // default organization for created projects
-}
+config = new Config {}   // bare config + SUPABASE_ACCESS_TOKEN is enough
 ```
 
 This mirrors `formae-plugin-sftp`: target config = location/scope,

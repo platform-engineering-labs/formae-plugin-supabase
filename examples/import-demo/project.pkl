@@ -24,9 +24,7 @@ forma {
     namespace = "SUPABASE"
     discoverable = true
     config {
-      organizationId = "REDACTED_ORG_ID"
       Type = "SUPABASE"
-      OrganizationId = "REDACTED_ORG_ID"
     }
   }
   supabaseTarget

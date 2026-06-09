@@ -56,7 +56,9 @@ Credentials live in environment variables, not the forma. Create a Personal Acce
 export SUPABASE_ACCESS_TOKEN=sbp_xxxxxxxxxxxx
 ```
 
-A target in your forma carries only deployment metadata:
+A target in your forma carries only deployment metadata. Every field is
+optional — a bare `Config {}` plus `SUPABASE_ACCESS_TOKEN` is enough to
+deploy and to discover every project the token can see:
 
 ```pkl
 import "@supabase/supabase.pkl"
@@ -64,8 +66,7 @@ import "@supabase/supabase.pkl"
 new formae.Target {
     label = "supabase-prod"
     config = new supabase.Config {
-        organizationId = "your-org-slug-or-id"
-        baseUrl        = null   // defaults to https://api.supabase.com
+        baseUrl = null   // defaults to https://api.supabase.com
     }
 }
 ```

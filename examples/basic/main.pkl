@@ -13,7 +13,6 @@ import "@formae/formae.pkl"
 import "@supabase/supabase.pkl"
 
 local projectRef = read("env:SUPABASE_PROJECT_REF")
-local orgID      = read("env:SUPABASE_ORGANIZATION_ID")
 
 forma {
   new formae.Stack {
@@ -23,9 +22,7 @@ forma {
 
   new formae.Target {
     label = "supabase-target"
-    config = new supabase.Config {
-      organizationId = orgID
-    }
+    config = new supabase.Config {}
   }
 
   // One Edge Function deployed from inline source.

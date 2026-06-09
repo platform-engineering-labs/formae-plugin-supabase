@@ -40,7 +40,6 @@ dbPass = read?("env:SUPABASE_DB_PASS") ?? "plugin-sdk-test-pass-\(testRunID)"
 target = new formae.Target {
     label = "supabase-target"
     config = new supabase.Config {
-        organizationId = organizationID
-        projectRef     = supabaseProjectRef
+        projectRef = supabaseProjectRef
     }
 }

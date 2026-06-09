@@ -57,21 +57,6 @@ func TestBranch_Status_Failure(t *testing.T) {
 	}
 }
 
-func TestBranch_Read_UsesGlobalEndpoint(t *testing.T) {
-	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
-		if r.URL.Path != "/v1/branches/branch-uuid" {
-			t.Errorf("path = %q", r.URL.Path)
-		}
-		_, _ = io.WriteString(w, `{"id":"branch-uuid","status":"FUNCTIONS_DEPLOYED"}`)
-	})
-	defer srv.Close()
-	b := &Branch{Client: c}
-	res, _ := b.Read(context.Background(), &resource.ReadRequest{NativeID: "parent1/branch-uuid"})
-	if res.ErrorCode != "" {
-		t.Fatalf("ErrorCode %v", res.ErrorCode)
-	}
-}
-
 func TestBranch_Status_ActiveHealthy(t *testing.T) {
 	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
 		_, _ = io.WriteString(w, `{"id":"branch-uuid","status":"ACTIVE_HEALTHY"}`)
@@ -184,6 +169,58 @@ func TestBranch_Update_NoMutableFieldsTriggersGET(t *testing.T) {
 	}
 	if method != "GET" {
 		t.Errorf("method = %q, want GET (no body fields)", method)
+	}
+}
+
+// TestBranch_Read_PopulatesNameFromList verifies discovery gets the
+// Forma-facing fields populated. The single-branch GET (/v1/branches/{id})
+// returns only the branch's Postgres connection info — NOT name or
+// parent_project_ref. The branch's name lives in the project's branch list
+// (/v1/projects/{ref}/branches). Read must source name + parentProjectRef
+// from there, or discovery drops every branch for "missing required fields:
+// [branch_name]".
+func TestBranch_Read_PopulatesNameFromList(t *testing.T) {
+	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/projects/parent1/branches" {
+			t.Errorf("expected list endpoint, got %q", r.URL.Path)
+		}
+		_, _ = io.WriteString(w, `[
+			{"id":"other-uuid","name":"main","project_ref":"shadowM","parent_project_ref":"parent1","status":"FUNCTIONS_DEPLOYED"},
+			{"id":"branch-uuid","name":"feat-x","project_ref":"shadow1","parent_project_ref":"parent1","status":"FUNCTIONS_DEPLOYED"}
+		]`)
+	})
+	defer srv.Close()
+	b := &Branch{Client: c}
+	res, _ := b.Read(context.Background(), &resource.ReadRequest{NativeID: "parent1/branch-uuid"})
+	if res.ErrorCode != "" {
+		t.Fatalf("ErrorCode %v", res.ErrorCode)
+	}
+	var got BranchProperties
+	if err := json.Unmarshal([]byte(res.Properties), &got); err != nil {
+		t.Fatalf("unmarshal: %v", err)
+	}
+	if got.BranchName != "feat-x" {
+		t.Errorf("branch_name = %q, want feat-x", got.BranchName)
+	}
+	if got.ParentProjectRef != "parent1" {
+		t.Errorf("parentProjectRef = %q, want parent1", got.ParentProjectRef)
+	}
+	if got.ID != "branch-uuid" {
+		t.Errorf("id = %q, want branch-uuid", got.ID)
+	}
+}
+
+// TestBranch_Read_NotFoundWhenAbsentFromList covers a branch id that no
+// longer appears in the parent's branch list → NotFound so sync prunes it.
+func TestBranch_Read_NotFoundWhenAbsentFromList(t *testing.T) {
+	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `[{"id":"someone-else","name":"main","parent_project_ref":"parent1"}]`)
+	})
+	defer srv.Close()
+	b := &Branch{Client: c}
+	res, _ := b.Read(context.Background(), &resource.ReadRequest{NativeID: "parent1/gone-uuid"})
+	if res.ErrorCode != resource.OperationErrorCodeNotFound {
+		t.Fatalf("ErrorCode = %v, want NotFound", res.ErrorCode)
 	}
 }
 
