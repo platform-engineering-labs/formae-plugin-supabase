@@ -12,9 +12,11 @@
 // Setup:
 //   export SUPABASE_ACCESS_TOKEN=sbp_xxx
 //
-// Apply the (empty) target, then discover:
+// Apply the (empty) target, then let the agent discover. The agent syncs
+// unmanaged resources automatically on its discovery interval; inspect them
+// with `formae inventory`:
 //   formae apply --mode reconcile examples/discover/main.pkl
-//   formae discover
+//   formae inventory resources --query 'managed:false namespace:SUPABASE'
 
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"

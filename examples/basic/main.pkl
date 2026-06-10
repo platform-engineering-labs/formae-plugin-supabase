@@ -6,13 +6,14 @@
 //
 // Setup:
 //   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//   export SUPABASE_PROJECT_REF=<existing project ref>
 //   formae apply --mode reconcile --watch examples/basic/main.pkl
 
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@supabase/supabase.pkl"
 
-local projectRef = read("env:SUPABASE_PROJECT_REF")
+local existingProjectRef = read("env:SUPABASE_PROJECT_REF")
 
 forma {
   new formae.Stack {
@@ -28,7 +29,7 @@ forma {
   // One Edge Function deployed from inline source.
   new supabase.EdgeFunction {
     label = "hello-world"
-    projectRef = projectRef
+    projectRef = existingProjectRef
     slug = "hello-world"
     name = "Hello World"
     body = """
