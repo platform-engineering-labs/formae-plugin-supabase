@@ -5,10 +5,6 @@ on:
     branches: [main]
   pull_request:
     branches: [main]
-  schedule:
-    # Nightly full conformance run against live Supabase. Billable —
-    # provisions Project + (paid) Branch resources, then tears them down.
-    - cron: '0 3 * * *'
   workflow_dispatch:
     inputs:
       test_filter:
@@ -83,9 +79,9 @@ jobs:
         run: make verify-schema
 
   # ------------------------------------------------------------------
-  # Live conformance tests — run on every same-repo PR, push to main,
-  # nightly schedule, and manual dispatch. Fork PRs are skipped because
-  # GitHub strips secrets from them.
+  # Live conformance tests — run on every same-repo PR, push to main, and
+  # manual dispatch. The nightly schedule lives in nightly.yml (tests against
+  # formae main). Fork PRs are skipped because GitHub strips secrets from them.
   # ------------------------------------------------------------------
 
   # Discover one matrix entry per `testdata/<name>.pkl` (excluding -update
@@ -94,7 +90,6 @@ jobs:
   #
   # Trigger matrix:
   #   push to main           → full suite (billable; main branch protection)
-  #   schedule (nightly)     → full suite
   #   workflow_dispatch      → optional `test_filter` scopes the run
   #   pull_request (same-repo) → full suite
   #   pull_request (fork)    → skipped — GitHub strips secrets from fork PRs
@@ -102,7 +97,6 @@ jobs:
     needs: [build, lint, pkl-validate, verify-schema]
     runs-on: ubuntu-latest
     if: >-
-      github.event_name == 'schedule' ||
       github.event_name == 'workflow_dispatch' ||
       (github.event_name == 'push' && github.ref == 'refs/heads/main') ||
       (github.event_name == 'pull_request' && github.event.pull_request.head.repo.full_name == github.repository)

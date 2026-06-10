@@ -1,0 +1,136 @@
+name: Nightly
+
+# Runs the full live conformance suite (CRUD + discovery) against formae's
+# main branch to catch SDK regressions before release. PEL-maintained plugins
+# only. Billable — provisions real Supabase Project + (paid) Branch resources,
+# then tears them down. Mirrors the other PEL plugins' nightly.yml.
+
+on:
+  schedule:
+    - cron: '0 3 * * *'  # 3 AM UTC
+  workflow_dispatch:
+    inputs:
+      formae_branch:
+        description: "Formae branch to build from (default: main)"
+        required: false
+        default: "main"
+        type: string
+      test_filter:
+        description: "Conformance test name filter (e.g. apikey). Empty = all."
+        required: false
+        default: ""
+        type: string
+
+# Share the conformance concurrency group with CI — both hit the same Supabase
+# project for sub-resource tests, so they must never run concurrently.
+concurrency:
+  group: supabase-conformance-tests
+  cancel-in-progress: false
+
+jobs:
+  # Discover one matrix entry per `testdata/<name>.pkl` (excluding -update and
+  # -replace variants), same as CI.
+  discover-tests:
+    runs-on: ubuntu-latest
+    outputs:
+      test-cases: ${{ steps.discover.outputs.test-cases }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Discover test cases
+        id: discover
+        run: |
+          FILTER="${{ inputs.test_filter }}"
+          TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
+            | xargs -n1 basename \
+            | grep -v '\-update\.pkl$' \
+            | grep -v '\-replace\.pkl$' \
+            | sed 's/\.pkl$//' \
+            | { if [ -n "$FILTER" ]; then grep -F "$FILTER"; else cat; fi; } \
+            | jq -R -s -c 'split("\n") | map(select(length > 0))')
+          echo "Discovered test cases: ${TEST_CASES}"
+          echo "test-cases=${TEST_CASES}" >> "$GITHUB_OUTPUT"
+
+  conformance-tests:
+    needs: [discover-tests]
+    runs-on: ubuntu-latest
+    timeout-minutes: 60
+    strategy:
+      matrix:
+        test-case: ${{ fromJson(needs.discover-tests.outputs.test-cases) }}
+      # Serialize — `scripts/ci/clean-environment.sh` runs before + after each
+      # test and deletes resources matching the test prefix on the shared
+      # project, so parallel jobs would clobber each other.
+      max-parallel: 1
+      fail-fast: false
+
+    env:
+      SUPABASE_ACCESS_TOKEN:    ${{ secrets.SUPABASE_ACCESS_TOKEN }}
+      SUPABASE_ORGANIZATION_ID: ${{ secrets.SUPABASE_ORGANIZATION_ID }}
+      SUPABASE_PROJECT_REF:     ${{ secrets.SUPABASE_PROJECT_REF }}
+      SUPABASE_DB_PASS:         ${{ secrets.SUPABASE_DB_PASS }}
+      FORMAE_TEST_RUN_ID:       ${{ github.run_id }}-${{ github.run_attempt }}-${{ matrix.test-case }}
+
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-go@v5
+        with:
+          go-version: "1.25"
+      - uses: pkl-community/setup-pkl@v0
+        with:
+          pkl-version: 0.30.0
+
+      - name: Build formae from source
+        run: |
+          BRANCH="${{ inputs.formae_branch || 'main' }}"
+          echo "Building formae from branch: ${BRANCH}"
+          git clone --branch "${BRANCH}" --depth 1 https://github.com/platform-engineering-labs/formae.git /tmp/formae
+          cd /tmp/formae
+          git fetch --tags
+          # Build with the latest release tag as the version string.
+          LATEST_TAG=$(git tag -l "[0-9]*" --sort=-version:refname | grep -v -- '-' | head -1)
+          echo "Building formae with VERSION=${LATEST_TAG}"
+          make build VERSION="${LATEST_TAG}"
+          echo "FORMAE_BINARY=/tmp/formae/formae" >> "$GITHUB_ENV"
+
+      - name: Inject formae replace directives
+        run: |
+          FORMAE_SRC=/tmp/formae
+          for pkg in pkg/api/model pkg/model pkg/plugin pkg/plugin-conformance-tests; do
+            if grep -q "formae/$pkg" go.mod 2>/dev/null; then
+              echo "Injecting replace for $pkg -> $FORMAE_SRC/$pkg"
+              go mod edit -replace "github.com/platform-engineering-labs/formae/$pkg=$FORMAE_SRC/$pkg"
+            fi
+          done
+          go mod tidy
+
+      - name: Install plugin
+        run: make install
+
+      - name: Run conformance test (${{ matrix.test-case }})
+        uses: nick-fields/retry@v3
+        with:
+          timeout_minutes: 30
+          max_attempts: 2
+          on_retry_command: ./scripts/ci/clean-environment.sh || true
+          command: |
+            # Full CRUD + discovery against the formae main build. FORMAE_BINARY
+            # (set above) makes the harness use our source build instead of
+            # downloading a release. The Supabase Management API's 5–10s
+            # eventual consistency on functions/secrets list is absorbed by the
+            # poll budget (OP_TIMEOUT) plus the job-level retry.
+            make conformance-test TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
+
+  # Aggregate the matrix — single status for the Nightly badge.
+  nightly-summary:
+    needs: [conformance-tests]
+    runs-on: ubuntu-latest
+    if: always()
+    steps:
+      - name: Report aggregate result
+        run: |
+          if [ "${{ needs.conformance-tests.result }}" = "success" ]; then
+            echo "Nightly conformance passed against formae main."
+          else
+            echo "Nightly conformance failed: ${{ needs.conformance-tests.result }}"
+            exit 1
+          fi
