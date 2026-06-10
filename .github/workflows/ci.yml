@@ -175,21 +175,18 @@ jobs:
             if [ -z "$VERSION" ] || [ "$VERSION" = "latest" ]; then
               VERSION="latest"
             fi
-            # CRUD on every trigger; Discovery only on schedule (nightly).
+            # CRUD + Discovery on every trigger. Discovery is a hard gate now
+            # that every resource type is discoverable (write-only fields made
+            # nullable so they don't fail Required validation; Branch.Read
+            # sources name/parent from the project branch list).
             #
-            # Even with `Config.projectRef` scoping our List() to a single
-            # project, the Supabase Management API has 5–10s eventual
-            # consistency between POST /functions (and /secrets) and the
-            # corresponding list endpoint. Our List sometimes returns an
-            # empty array right after Create, then the list element
-            # disappears on the next sweep — flaking the 2-minute discovery
-            # window. Run those on the slower nightly cadence so noise
-            # doesn't block push/PR.
-            if [ "${{ github.event_name }}" = "schedule" ]; then
-              make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
-            else
-              make conformance-test-crud VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
-            fi
+            # Note: the Supabase Management API has 5–10s eventual consistency
+            # between POST /functions (and /secrets) and the corresponding list
+            # endpoint, so List can briefly return an empty array right after
+            # Create. The conformance harness polls within FORMAE_TEST_TIMEOUT
+            # (OP_TIMEOUT=20m) and the job retries once (retry@v3, max 2) with a
+            # clean-environment reset, which absorbs that window.
+            make conformance-test VERSION="$VERSION" TEST=${{ matrix.test-case }} TIMEOUT=25m OP_TIMEOUT=20
 
   # Aggregate the matrix — single green tick on the PR/branch.
   conformance-summary:

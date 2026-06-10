@@ -23,8 +23,7 @@ import (
 // Kept here (rather than in package main) so resource packages can depend on
 // it without an import cycle.
 type TargetConfig struct {
-	OrganizationID string `json:"OrganizationId"`
-	BaseURL        string `json:"BaseUrl"`
+	BaseURL string `json:"BaseUrl"`
 	// ProjectRef optionally scopes discovery + List() calls to a single
 	// Supabase project. Without it, List() walks every project the token
 	// can see (slow on large orgs; can time out the conformance harness's

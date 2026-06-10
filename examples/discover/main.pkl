@@ -1,0 +1,31 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Discovery-only example — a bare Supabase target, no resources.
+//
+// Proves a target needs nothing but SUPABASE_ACCESS_TOKEN: no
+// organizationId, no projectRef. Once applied, discovery walks every
+// project the PAT can see (Project list is always global) plus their
+// sub-resources (Branch, APIKey, EdgeFunction, Secret).
+//
+// Setup:
+//   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//
+// Apply the (empty) target, then discover:
+//   formae apply --mode reconcile examples/discover/main.pkl
+//   formae discover
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@supabase/supabase.pkl"
+
+forma {
+  // Bare target — no organizationId, no projectRef. Credentials come from
+  // SUPABASE_ACCESS_TOKEN in the environment. No stack/resources: this forma
+  // exists only to register a discoverable target.
+  new formae.Target {
+    label = "supabase-target"
+    config = new supabase.Config {}
+  }
+}

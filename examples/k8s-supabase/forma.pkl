@@ -17,7 +17,6 @@
 //
 // Setup before applying:
 //   export SUPABASE_ACCESS_TOKEN=sbp_xxx
-//   export SUPABASE_ORGANIZATION_ID=...
 //   export SUPABASE_PROJECT_REF=...
 //   export DEMO_IMAGE=ghcr.io/your-org/k8s-supabase-demo:latest  # built from ./Dockerfile
 //   export INGRESS_HOST=supabase-demo.local
@@ -37,7 +36,6 @@ import "@k8s/core/Service.pkl" as svc
 import "@k8s/apps/Deployment.pkl" as dep
 import "@k8s/networking/Ingress.pkl" as ing
 
-local supabaseOrg     = read("env:SUPABASE_ORGANIZATION_ID")
 local supabaseProject = read("env:SUPABASE_PROJECT_REF")
 local demoImage       = read("env:DEMO_IMAGE")
 local ingressHost     = read?("env:INGRESS_HOST") ?? "supabase-demo.local"
@@ -71,9 +69,7 @@ forma {
 
     local supabaseTarget = new formae.Target {
         label = "supabase-target"
-        config = new supabase.Config {
-            organizationId = supabaseOrg
-        }
+        config = new supabase.Config {}
     }
     supabaseTarget
 

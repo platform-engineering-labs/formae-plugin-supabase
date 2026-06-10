@@ -75,6 +75,49 @@ type BranchProperties struct {
 	CreatedAt           string `json:"created_at,omitempty"`
 }
 
+// branchAPI is the Supabase-API-facing shape (GET /v1/branches/{id} and
+// /v1/projects/{ref}/branches). The API names the branch `name` and carries
+// `parent_project_ref`; the Forma shape uses `branch_name` and
+// `parentProjectRef`. Decoding the raw response straight into BranchProperties
+// silently dropped both (mismatched JSON tags), which made discovery reject
+// every branch for "missing required fields". Map explicitly instead.
+type branchAPI struct {
+	ID                  string `json:"id,omitempty"`
+	Name                string `json:"name,omitempty"`
+	ProjectRef          string `json:"project_ref,omitempty"`
+	ParentProjectRef    string `json:"parent_project_ref,omitempty"`
+	GitBranch           string `json:"git_branch,omitempty"`
+	IsDefault           bool   `json:"is_default,omitempty"`
+	Persistent          bool   `json:"persistent,omitempty"`
+	Region              string `json:"region,omitempty"`
+	DesiredInstanceSize string `json:"desired_instance_size,omitempty"`
+	Status              string `json:"status,omitempty"`
+	CreatedAt           string `json:"created_at,omitempty"`
+}
+
+// toProps converts the API shape to the Forma shape. parentFallback (the
+// parent ref parsed from the native ID) is used when the API response omits
+// parent_project_ref, so discovery and Read always yield a complete resource.
+func (a branchAPI) toProps(parentFallback string) BranchProperties {
+	parent := a.ParentProjectRef
+	if parent == "" {
+		parent = parentFallback
+	}
+	return BranchProperties{
+		ID:                  a.ID,
+		ParentProjectRef:    parent,
+		ProjectRef:          a.ProjectRef,
+		BranchName:          a.Name,
+		GitBranch:           a.GitBranch,
+		IsDefault:           a.IsDefault,
+		Persistent:          a.Persistent,
+		Region:              a.Region,
+		DesiredInstanceSize: a.DesiredInstanceSize,
+		Status:              a.Status,
+		CreatedAt:           a.CreatedAt,
+	}
+}
+
 const (
 	// Terminal success states. Newer Supabase deployments report the
 	// branch's underlying shadow-project status (ACTIVE_HEALTHY) once
@@ -130,18 +173,31 @@ func (b *Branch) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 }
 
 func (b *Branch) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
-	_, id, err := prov.ParseTwoPart(req.NativeID)
+	parent, id, err := prov.ParseTwoPart(req.NativeID)
 	if err != nil {
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeInvalidRequest}, nil
 	}
-	var p BranchProperties
-	if err := b.Client.Do(ctx, supatransport.Request{Method: "GET", Path: "/v1/branches/" + id}, &p); err != nil {
+	// The single-branch GET (/v1/branches/{id}) returns only the branch's
+	// Postgres connection info — not its name or parent_project_ref. The
+	// branch metadata (name, parent) lives in the parent project's branch
+	// list, so Read sources it there. Without name, discovery rejects the
+	// branch for "missing required fields: [branch_name]".
+	var list []branchAPI
+	if err := b.Client.Do(ctx, supatransport.Request{
+		Method: "GET", Path: "/v1/projects/" + parent + "/branches",
+	}, &list); err != nil {
 		if supatransport.IsNotFound(err) {
 			return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 		}
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: supatransport.ClassifyError(err)}, nil
 	}
-	return &resource.ReadResult{ResourceType: req.ResourceType, Properties: string(prov.MustMarshal(p))}, nil
+	for _, api := range list {
+		if api.ID == id {
+			return &resource.ReadResult{ResourceType: req.ResourceType, Properties: string(prov.MustMarshal(api.toProps(parent)))}, nil
+		}
+	}
+	// Branch id no longer present in the parent's list → gone.
+	return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 }
 
 func (b *Branch) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
