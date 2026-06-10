@@ -90,6 +90,7 @@ formae apply --mode reconcile examples/basic/main.pkl
 
 - [`examples/discover/`](examples/discover/) — bare target for discovering existing resources
 - [`examples/basic/`](examples/basic/) — single Edge Function
+- [`examples/k8s-supabase/`](examples/k8s-supabase/) — Next.js + Supabase Auth demo on Kubernetes (cross-plugin)
 - [`examples/import-demo/`](examples/import-demo/) — extract an existing Supabase project as PKL
 
 ## Development
