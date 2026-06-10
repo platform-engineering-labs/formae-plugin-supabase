@@ -40,8 +40,6 @@ unmanaged cloud fields don't surface as drift.
 | `Project.database` | `PUT /v1/projects/{ref}/config/database/postgres` |
 | `Project.networkRestriction` | `PATCH /v1/projects/{ref}/network-restrictions` |
 
-See [docs/ARCHITECTURE.md](docs/ARCHITECTURE.md) for endpoint-level detail.
-
 ## Configuration
 
 Configure a target in your forma file. Every field is optional — a bare

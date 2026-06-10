@@ -4,8 +4,7 @@
 
 /// Supabase Management API resource definitions.
 ///
-/// See docs/RESOURCES.md for the full roadmap. Only resources implemented
-/// in supabase.go appear here.
+/// Only resources implemented in the plugin appear here.
 module supabase
 
 import "@formae/formae.pkl"
