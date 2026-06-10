@@ -7,13 +7,16 @@
 // What it does:
 //   1. Mints a publishable API key on an existing Supabase project
 //      (SUPABASE::Auth::APIKey).
-//   2. Patches the project's Auth site_url so login redirects land on the
-//      k8s ingress (SUPABASE::Config::AuthSettings).
-//   3. Stamps a k8s Secret with NEXT_PUBLIC_SUPABASE_URL and
+//   2. Stamps a k8s Secret with NEXT_PUBLIC_SUPABASE_URL and
 //      NEXT_PUBLIC_SUPABASE_ANON_KEY, sourced from the Supabase resources.
-//   4. Runs a Deployment + Service + Ingress in k8s that reads the secret
+//   3. Runs a Deployment + Service + Ingress in k8s that reads the secret
 //      and proves the wiring by calling the Supabase Auth /settings
 //      endpoint at request time.
+//
+// Note: per-project config (e.g. Auth site_url) is no longer a standalone
+// resource — it nests inside SUPABASE::Platform::Project. Mutating it would
+// mean managing the whole project, which this demo deliberately avoids (it
+// uses an existing project by ref). Set site_url in the dashboard if needed.
 //
 // Setup before applying:
 //   export SUPABASE_ACCESS_TOKEN=sbp_xxx
@@ -96,15 +99,6 @@ forma {
         description = "k8s_supabase_demo"
     }
     anonKey
-
-    new supabase.AuthSettings {
-        label = "demo-auth-settings"
-        target = supabaseTarget.res
-        projectRef = supabaseProject
-        settings = new Mapping {
-            ["site_url"] = "http://\(ingressHost)"
-        }
-    }
 
     // -- K8s side --------------------------------------------------------------
 

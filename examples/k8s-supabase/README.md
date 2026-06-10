@@ -3,15 +3,18 @@
 A single `forma.pkl` that:
 
 1. Mints a publishable API key on an existing Supabase project (`SUPABASE::Auth::APIKey`).
-2. Patches Supabase Auth `site_url` so login redirects land on the k8s ingress (`SUPABASE::Config::AuthSettings`).
-3. Stamps a k8s `Secret` carrying `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`. **Today the anon key is read from `$SUPABASE_ANON_KEY` at apply time**; once the supabase plugin's PKL schema exposes `APIKey.api_key` as a `formae.Resolvable`, this will become a direct cross-plugin reference (see TODO in `forma.pkl`).
-4. Runs a tiny Go app in k8s (`Deployment` + `Service` + `Ingress`) that hits Supabase's Auth `/settings` endpoint at request time. Visit it and you see the live JSON response — end-to-end proof.
+2. Stamps a k8s `Secret` carrying `NEXT_PUBLIC_SUPABASE_URL` + `NEXT_PUBLIC_SUPABASE_ANON_KEY`. **Today the anon key is read from `$SUPABASE_ANON_KEY` at apply time**; once the supabase plugin's PKL schema exposes `APIKey.api_key` as a `formae.Resolvable`, this will become a direct cross-plugin reference (see TODO in `forma.pkl`).
+3. Runs a tiny Go app in k8s (`Deployment` + `Service` + `Ingress`) that hits Supabase's Auth `/settings` endpoint at request time. Visit it and you see the live JSON response — end-to-end proof.
+
+> Per-project Auth config (e.g. `site_url`) is no longer a standalone resource —
+> it nests inside `SUPABASE::Platform::Project`. This demo uses an existing
+> project by ref and doesn't manage it, so set `site_url` in the dashboard if
+> your redirect flow needs it.
 
 ```
 ┌──────────────────┐   formae apply   ┌──────────────────────┐
 │ supabase plugin  │ ───────────────► │ Supabase project     │
 │  - APIKey        │                  │  - publishable key   │
-│  - AuthSettings  │                  │  - site_url patched  │
 └────────┬─────────┘                  └──────────────────────┘
          │ anonKey.api_key
          ▼
@@ -82,8 +85,7 @@ formae apply --mode reconcile --yes forma.pkl
 formae will:
 
 1. Create `SUPABASE::Auth::APIKey` and capture the secret value.
-2. Patch `SUPABASE::Config::AuthSettings` with `site_url`.
-3. Create the k8s namespace, secret (with the API key from step 1), deployment, service, ingress.
+2. Create the k8s namespace, secret (with the API key from step 1), deployment, service, ingress.
 
 ## 4. Hit it
 

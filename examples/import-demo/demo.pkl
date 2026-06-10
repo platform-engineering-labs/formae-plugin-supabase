@@ -1,48 +1,21 @@
-// Minimal demo forma for the Supabase call.
+// Minimal demo forma — just the bare Supabase target.
 //
-// project.pkl in this same directory is the FULL extracted state (700
-// lines, every managed resource on the project). Round-tripping that
-// verbatim hits real API quirks: NetworkRestriction PATCH expects
-// add/remove instead of direct CIDRs, AuthSettings rejects SMTP fields
-// unless ALL SMTP_* keys are supplied, paused projects refuse writes,
-// and APIKey Create on an already-existing name returns 422.
+// project.pkl in this directory is the full extracted state: one Project with
+// its per-project config (auth / api / database / network) nested inside it,
+// plus API keys, an edge function, and a secret.
 //
-// For the live demo we ship this trimmed file that touches exactly one
-// resource: the project's PostgREST (APISettings) config. Apply it,
-// flip `max_rows` from 1000 to 5000, apply again, refresh dashboard —
-// done.
-//
-// Use project.pkl to show the audience the FULL extract result, then
-// run apply against this file for the live change.
+// For the live "change one thing" beat, edit project.pkl — e.g. flip
+// Project.api.settings.max_rows from 1000 to 5000 — and re-apply. Nested
+// config is applied as a PATCH/PUT against the existing project, so the
+// change lands in ~2 seconds.
 
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
 import "@supabase/supabase.pkl" as supabase
 
-local supabaseProjectRef = read?("env:SUPABASE_PROJECT_REF") ?? "REDACTED_PROJECT_REF"
-
 forma {
-    //local demoStack = new formae.Stack {
-    //    label = "supabase-call-demo"
-    //    description = "Live demo — single APISettings change"
-    //}
-    //demoStack
-
-    local supabaseTarget = new formae.Target {
+    new formae.Target {
         label = "supabase-target"
         config = new supabase.Config {}
     }
-    supabaseTarget
-
-    //new supabase.APISettings {
-    //    label = "demo-api-settings"
-    //    target = supabaseTarget.res
-    //    stack  = demoStack.res
-    //    projectRef = supabaseProjectRef
-    //    settings = new Mapping {
-    //        ["db_extra_search_path"] = "public, extensions"
-    //        ["db_schema"]            = "public,graphql_public"
-    //        ["max_rows"]             = 1000   // ← flip to 5000 for the live "change one thing" beat
-    //    }
-    //}
 }

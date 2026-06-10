@@ -6,6 +6,7 @@
 //
 // Setup:
 //   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//   export SUPABASE_PROJECT_REF=<existing project ref>
 //   formae apply --mode reconcile --watch examples/basic/main.pkl
 
 amends "@formae/forma.pkl"

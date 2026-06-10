@@ -29,34 +29,38 @@ formae extract \
   project.pkl
 ```
 
-Output: a single PKL file (~700 lines) describing every managed Supabase
-resource on the project — API keys, auth config, PostgREST config,
-Postgres tuning, network restrictions, organisation, edge functions.
+Output: a single PKL file describing every managed Supabase resource on the
+project — the project itself with its auth / PostgREST / Postgres / network
+config nested inside it, plus API keys, edge functions, and secrets.
 
-This is `project.pkl` in this directory — captured from a live free-tier
-Supabase project (jwt_secret redacted to an env read).
+This is `project.pkl` in this directory — a redacted capture from a live
+free-tier Supabase project.
 
 ### Step 3: open the file
 
-It's plain PKL — diff-able, reviewable, version-controllable. Examples:
+It's plain PKL — diff-able, reviewable, version-controllable. Per-project
+config nests inside the `Project` resource:
 
 ```pkl
-new supabase.APISettings {
-    projectRef = "REDACTED_PROJECT_REF"
-    settings = new Mapping {
-        ["db_schema"] = "public,graphql_public"
-        ["max_rows"] = 1000
-    }
-}
+new supabase.Project {
+    label = "REDACTED_PROJECT_REF"
+    name = "my-project"
+    organizationId = "REDACTED_ORG_ID"
+    region = "us-east-1"
 
-new supabase.AuthSettings {
-    projectRef = "REDACTED_PROJECT_REF"
-    settings = new Mapping {
-        ["site_url"] = "http://localhost:8081"
-        ["mailer_autoconfirm"] = false
-        ["external_email_enabled"] = true
-        ["disable_signup"] = false
-        // … and 80+ more knobs
+    api = new supabase.ProjectAPIConfig {
+        settings = new Mapping {
+            ["db_schema"] = "public,graphql_public"
+            ["max_rows"] = 1000
+        }
+    }
+
+    auth = new supabase.ProjectAuthConfig {
+        settings = new Mapping {
+            ["site_url"] = "http://localhost:3000"
+            ["disable_signup"] = false
+            // … and many more knobs
+        }
     }
 }
 ```
@@ -116,7 +120,7 @@ truth.
 
 | File | Purpose |
 |---|---|
-| `project.pkl` | Real extracted state from `REDACTED_PROJECT_REF.supabase.co` (free-tier project). 700 lines. |
+| `project.pkl` | Redacted extracted state from a free-tier project — the `Project` with nested config plus its API keys, edge function, and secret. |
 | `PklProject` | PKL deps (local supabase plugin + formae hub package). |
 
 ## Running it yourself
@@ -125,7 +129,6 @@ truth.
 cd examples/import-demo
 pkl project resolve         # one-time
 export SUPABASE_ACCESS_TOKEN=sbp_...
-export SUPABASE_JWT_SECRET=…  # the project's existing jwt_secret
 formae apply --mode reconcile --yes project.pkl
 ```
 

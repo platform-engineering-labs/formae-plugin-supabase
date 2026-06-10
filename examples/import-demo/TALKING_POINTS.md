@@ -12,9 +12,8 @@ control."
 
 1. Open Supabase dashboard, point at the live project.
 2. Run `formae extract --query 'target:supabase-target' project.pkl`
-3. Open `project.pkl` — show ~700 lines covering APIKey, AuthSettings,
-   APISettings, DatabaseSettings, NetworkRestriction, Organization,
-   EdgeFunction.
+3. Open `project.pkl` — show the Project with its nested auth / api /
+   database / network config, plus APIKey, EdgeFunction, Secret.
 4. Diff one line, `formae apply` — change live in 2 seconds.
 5. Click revert in dashboard. `formae apply` again — drift gone.
 
@@ -34,16 +33,13 @@ Three things hosted Supabase doesn't currently solve:
 
 Implemented + tested live:
 
-- `SUPABASE::Platform::Project` (async create, ~3-min poll)
+- `SUPABASE::Platform::Project` (async create, ~3-min poll). Per-project
+  config — auth, PostgREST, Postgres tuning, network restrictions — nests
+  inside the Project resource (PATCH/PUT on apply).
 - `SUPABASE::Platform::Branch` (async, paid plans only)
-- `SUPABASE::Platform::Organization` (read + create)
 - `SUPABASE::Auth::APIKey` (CRUD; survived OOB delete + sync)
 - `SUPABASE::Functions::EdgeFunction` (CRUD, inline body)
 - `SUPABASE::Functions::Secret` (bulk endpoints, write-only values)
-- `SUPABASE::Config::AuthSettings` (singleton PATCH)
-- `SUPABASE::Config::APISettings` (singleton PATCH)
-- `SUPABASE::Config::DatabaseSettings` (singleton PUT)
-- `SUPABASE::Config::NetworkRestriction` (singleton PATCH)
 
 Architecture mirrors the K8s plugin: per-namespace subpackages,
 self-registration via `init()`, slim main dispatcher. ~2000 LoC Go +
