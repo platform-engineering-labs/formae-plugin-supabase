@@ -19,7 +19,7 @@ export SUPABASE_ORGANIZATION_ID=your_org_id
 # Pre-existing PAID project ref used by every sub-resource test
 # (Branch, APIKey, EdgeFunction, Secret). Keeps the test loop fast and
 # avoids paying for full project provisioning each run.
-export SUPABASE_PROJECT_REF=csytcebalsbqfxjxfhtq
+export SUPABASE_PROJECT_REF=your_project_ref
 
 # Postgres password for the Project Create test (>= 8 chars).
 export SUPABASE_DB_PASS=plugin-sdk-test-pass
