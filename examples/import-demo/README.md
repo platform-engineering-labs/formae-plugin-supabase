@@ -125,10 +125,16 @@ truth.
 
 ## Running it yourself
 
+`project.pkl` ships with `REDACTED_*` placeholders, so **don't apply it
+verbatim** — `organizationId`/`projectRef` won't match a real project and the
+apply would try to create a new one. Extract your *own* project first (below),
+then apply that:
+
 ```bash
 cd examples/import-demo
 pkl project resolve         # one-time
 export SUPABASE_ACCESS_TOKEN=sbp_...
+formae extract --schema-location local --query 'target:supabase-target' project.pkl
 formae apply --mode reconcile --yes project.pkl
 ```
 
