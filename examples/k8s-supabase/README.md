@@ -29,7 +29,11 @@ A single `forma.pkl` that:
 
 - formae CLI (`v0.85+`)
 - `formae-plugin-supabase` installed (`make install` from the repo root)
-- `formae-plugin-k8s` installed (`v0.1.1+`)
+- `formae-plugin-k8s` installed (`v0.1.1+`). **Then edit `PklProject`** — the
+  `["k8s"]` import points at a local k8s-plugin schema path that varies by
+  install location, version, and layout; set it to match yours (`formae plugin
+  list` shows the version). The k8s plugin isn't on the formae hub yet, so this
+  can't be auto-resolved.
 - A Supabase project (free tier OK) — see the repo's main `README.md`
 - A k8s cluster: orbstack / kind / minikube / EKS / GKE — anything `~/.kube/config` points at
 - Container registry the cluster can pull from (ghcr, dockerhub, ECR)
