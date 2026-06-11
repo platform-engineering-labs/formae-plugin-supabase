@@ -1,0 +1,113 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Full project from scratch — the whole plugin surface in one apply.
+//
+// Creates a Supabase Project (with nested auth / Data API / Postgres config),
+// two API keys, an edge-function secret, and an edge function that reads it.
+// Children reference the freshly created project via `project.res.id` — no
+// pre-existing project, no second apply.
+//
+// Setup:
+//   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//   export SUPABASE_ORG_ID=<org slug or id>
+//   export SUPABASE_DB_PASS=<initial postgres password, >= 8 chars>
+//   export OPENAI_API_KEY=sk-...        # optional, demo fallback otherwise
+//   formae apply --mode reconcile --watch examples/full-project/main.pkl
+//
+// Project create is async (~2 min to ACTIVE_HEALTHY); --watch shows progress.
+// Free tier allows 2 projects per org. Tear down with:
+//   formae destroy examples/full-project/main.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@supabase/supabase.pkl"
+
+local orgId      = read("env:SUPABASE_ORG_ID")
+local demoDbPass = read("env:SUPABASE_DB_PASS")
+local openaiKey  = read?("env:OPENAI_API_KEY") ?? "sk-demo-not-a-real-key"
+
+forma {
+  new formae.Stack {
+    label = "supabase-full-project"
+    description = "Complete Supabase product stack from a single apply"
+  }
+
+  new formae.Target {
+    label = "supabase-target"
+    config = new supabase.Config {}
+  }
+
+  // The project itself. Nested blocks PATCH the project's auth, Data API
+  // (PostgREST), and Postgres settings right after creation.
+  local project = new supabase.Project {
+    label = "demo-project"
+    name = "formae-full-demo"
+    organizationId = orgId
+    region = "us-east-1"
+    dbPass = demoDbPass
+    plan = "free"
+    auth = new supabase.ProjectAuthConfig {
+      settings = new Mapping {
+        ["site_url"] = "https://example.com"
+      }
+    }
+    api = new supabase.ProjectAPIConfig {
+      settings = new Mapping {
+        ["max_rows"] = 1000
+      }
+    }
+    database = new supabase.ProjectDatabaseConfig {
+      settings = new Mapping {
+        ["statement_timeout"] = "10s"
+      }
+    }
+  }
+  project
+
+  // Browser-safe key for the web app.
+  new supabase.APIKey {
+    label = "publishable-key"
+    projectRef = project.res.id
+    apikey_type = "publishable"
+    name = "frontend_publishable"
+    description = "Browser-safe key for the web app"
+  }
+
+  // Server-side key for trusted services.
+  new supabase.APIKey {
+    label = "secret-key"
+    projectRef = project.res.id
+    apikey_type = "secret"
+    name = "backend_secret"
+    description = "Server-side key for trusted services"
+  }
+
+  // Edge-function secret. Value is write-only: the API never returns it,
+  // so formae cannot detect drift on the value itself.
+  new supabase.Secret {
+    label = "openai-key"
+    projectRef = project.res.id
+    name = "OPENAI_API_KEY"
+    value = openaiKey
+  }
+
+  // Edge function that proves the secret is wired through.
+  new supabase.EdgeFunction {
+    label = "ask-ai"
+    projectRef = project.res.id
+    slug = "ask-ai"
+    name = "Ask AI"
+    verify_jwt = true
+    body = """
+      Deno.serve(() => {
+        const key = Deno.env.get("OPENAI_API_KEY") ?? "unset"
+        return new Response(
+          JSON.stringify({ openaiKeyPrefix: key.slice(0, 7) }),
+          { headers: { "Content-Type": "application/json" } },
+        )
+      })
+      """
+  }
+}
