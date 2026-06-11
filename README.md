@@ -68,30 +68,23 @@ Set it before starting the formae agent.
 
 ## Examples
 
-See the [examples/](examples/) directory for usage examples.
+Each example is a self-contained Pkl project — `cd` in or pass the path to
+`formae apply`.
 
-```pkl
-import "@formae/formae.pkl"
-import "@supabase/supabase.pkl"
+| Example | Shows | Needs |
+|---------|-------|-------|
+| [`full-project/`](examples/full-project/) | Whole stack from one apply: Project + nested config, API keys, secret, edge function wired via `project.res.id` | `SUPABASE_ORG_ID`, `SUPABASE_DB_PASS` |
+| [`branching/`](examples/branching/) | Preview environments: persistent develop branch + git-tracked ephemeral branch | `SUPABASE_PROJECT_REF` (paid plan) |
+| [`edge-secrets/`](examples/edge-secrets/) | Edge function + the write-only secrets it reads | `SUPABASE_PROJECT_REF` |
+| [`basic/`](examples/basic/) | Smallest possible forma: one edge function | `SUPABASE_PROJECT_REF` |
+| [`discover/`](examples/discover/) | Bare target; agent discovers every project the PAT can see | — |
+| [`import-demo/`](examples/import-demo/) | `formae extract`: adopt an existing project as PKL | `SUPABASE_ACCESS_TOKEN` only |
 
-new supabase.Project {
-  label          = "demo"
-  name           = "demo"
-  organizationId = "your-org"
-  region         = "us-east-1"
-  dbPass         = read("env:SUPABASE_DB_PASS")
-  plan           = "free"
-}
-```
+All examples additionally require `SUPABASE_ACCESS_TOKEN`.
 
 ```bash
-# Apply resources
-formae apply --mode reconcile examples/basic/main.pkl
+formae apply --mode reconcile --watch examples/full-project/main.pkl
 ```
-
-- [`examples/discover/`](examples/discover/) — bare target for discovering existing resources
-- [`examples/basic/`](examples/basic/) — single Edge Function
-- [`examples/import-demo/`](examples/import-demo/) — extract an existing Supabase project as PKL
 
 ## Development
 
