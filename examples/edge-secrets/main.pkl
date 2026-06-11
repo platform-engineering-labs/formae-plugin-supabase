@@ -1,0 +1,76 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Edge function + its secrets — the everyday deploy unit.
+//
+// Two Functions::Secrets and one EdgeFunction consuming them via
+// Deno.env.get(), against an existing project. Secret values are
+// write-only: the API never returns them, so formae cannot detect
+// drift on the values. Secret names must not start with SUPABASE_.
+//
+// Setup:
+//   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//   export SUPABASE_PROJECT_REF=<existing project ref>
+//   export OPENAI_API_KEY=sk-...      # optional, demo fallback otherwise
+//   export WEBHOOK_SECRET=whsec_...   # optional, demo fallback otherwise
+//   formae apply --mode reconcile --watch examples/edge-secrets/main.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@supabase/supabase.pkl"
+
+local targetProjectRef = read("env:SUPABASE_PROJECT_REF")
+local openaiKey        = read?("env:OPENAI_API_KEY") ?? "sk-demo-not-a-real-key"
+local webhookSecret    = read?("env:WEBHOOK_SECRET") ?? "whsec-demo-not-a-real-secret"
+
+forma {
+  new formae.Stack {
+    label = "supabase-edge-secrets"
+    description = "Edge function plus the secrets it reads"
+  }
+
+  new formae.Target {
+    label = "supabase-target"
+    config = new supabase.Config {}
+  }
+
+  new supabase.Secret {
+    label = "openai-key"
+    projectRef = targetProjectRef
+    name = "OPENAI_API_KEY"
+    value = openaiKey
+  }
+
+  new supabase.Secret {
+    label = "webhook-signing-secret"
+    projectRef = targetProjectRef
+    name = "WEBHOOK_SECRET"
+    value = webhookSecret
+  }
+
+  // Webhook handler that uses both secrets. verify_jwt = false because
+  // external webhook senders don't carry a Supabase JWT — the signing
+  // secret is the auth mechanism instead.
+  new supabase.EdgeFunction {
+    label = "webhook-handler"
+    projectRef = targetProjectRef
+    slug = "webhook-handler"
+    name = "Webhook Handler"
+    verify_jwt = false
+    body = """
+      Deno.serve(async (req) => {
+        const signature = req.headers.get("x-webhook-signature") ?? ""
+        const secret = Deno.env.get("WEBHOOK_SECRET") ?? ""
+        if (signature !== secret) {
+          return new Response("invalid signature", { status: 401 })
+        }
+        const hasOpenAI = (Deno.env.get("OPENAI_API_KEY") ?? "") !== ""
+        return new Response(
+          JSON.stringify({ ok: true, openAIConfigured: hasOpenAI }),
+          { headers: { "Content-Type": "application/json" } },
+        )
+      })
+      """
+  }
+}
