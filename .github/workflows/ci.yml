@@ -107,9 +107,11 @@ jobs:
       - name: Discover test cases
         id: discover
         run: |
-          # Every resource in testdata/ runs in CI. All matrix entries are
-          # hard gates — singletons that lacked Delete were folded into
-          # SUPABASE::Platform::Project as nested config blocks.
+          # Every resource in testdata/ runs in CI as a hard gate, against the
+          # shared persistent project (github-ci-fixed, via SUPABASE_PROJECT_REF).
+          # Note: `project` has no -replace fixture (the Replace phase needs a
+          # second project to coexist with the persistent one, exceeding the
+          # free-tier 2-project cap), so project runs every phase but Replace.
           FILTER="${{ inputs.test_filter }}"
           TEST_CASES=$(ls testdata/*.pkl 2>/dev/null \
             | xargs -n1 basename \

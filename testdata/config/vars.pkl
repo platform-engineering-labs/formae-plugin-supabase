@@ -28,9 +28,6 @@ supabaseProjectRef = read("env:SUPABASE_PROJECT_REF")
 // AWS region the test resources live in. us-east-1 is the safest default.
 region = read?("env:SUPABASE_REGION") ?? "us-east-1"
 
-// Region used by the Project-replace test. Must differ from region.
-replacementRegion = read?("env:SUPABASE_REPLACEMENT_REGION") ?? "eu-west-1"
-
 // Postgres password for the Project create test. >= 8 chars.
 dbPass = read?("env:SUPABASE_DB_PASS") ?? "plugin-sdk-test-pass-\(testRunID)"
 
