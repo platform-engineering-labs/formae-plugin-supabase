@@ -96,11 +96,15 @@ class Project extends formae.Resource {
     /// aren't present in the Read response. Since the API never echoes the
     /// password, a non-nullable `dbPass` makes every existing project
     /// undiscoverable. Create() enforces presence in Go instead.
+    ///
+    /// Accepts a `formae.Value` so the password can be a formae-managed secret
+    /// (e.g. `formae.value(random.password(16, false)).opaque.setOnce`); formae
+    /// resolves it to a plain string before the plugin sees it.
     @formae.FieldHint {
         createOnly = true
         writeOnly = true
     }
-    dbPass: String?
+    dbPass: (formae.Value|String)?
 
     /// Pricing plan ("free", "pro", "team", "enterprise").
     @formae.FieldHint {}
