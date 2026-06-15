@@ -73,7 +73,7 @@ Each example is a self-contained Pkl project — `cd` in or pass the path to
 
 | Example | Shows | Needs |
 |---------|-------|-------|
-| [`full-project/`](examples/full-project/) | Whole stack from one apply: Project + nested config, API keys, secret, edge function wired via `project.res.id` | `SUPABASE_ORG_ID`, `SUPABASE_DB_PASS` |
+| [`full-project/`](examples/full-project/) | Whole stack from one apply: Project + nested config, API keys, secret, edge function wired via `project.res.id`. DB password is a formae secret (env `SUPABASE_DB_PASS` if set, else generated) | `SUPABASE_ORG_ID` |
 | [`branching/`](examples/branching/) | Preview environments: persistent develop branch + git-tracked ephemeral branch | `SUPABASE_PROJECT_REF` (paid plan) |
 | [`edge-secrets/`](examples/edge-secrets/) | Edge function + the write-only secrets it reads | `SUPABASE_PROJECT_REF` |
 | [`basic/`](examples/basic/) | Smallest possible forma: one edge function | `SUPABASE_PROJECT_REF` |

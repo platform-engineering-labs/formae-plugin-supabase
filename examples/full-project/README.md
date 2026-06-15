@@ -14,15 +14,19 @@ time, so nothing exists before you run this and no second apply is needed.
 |----------|-------------|
 | `SUPABASE_ACCESS_TOKEN` | Personal Access Token (`sbp_…`) — create at <https://supabase.com/dashboard/account/tokens> |
 | `SUPABASE_ORG_ID` | Organization slug or id that will own the project |
-| `SUPABASE_DB_PASS` | Initial Postgres password (min 8 chars, write-only) |
+| `SUPABASE_DB_PASS` | Optional — initial Postgres password (min 8 chars). If unset, formae generates one. |
 | `OPENAI_API_KEY` | Optional — demo fallback value is used when unset |
+
+The DB password is a **formae-managed secret** either way: set via env, it's
+wrapped opaque (never logged); unset, formae generates a strong password once
+and reuses it. No plaintext lands in the forma or in formae's state.
 
 ## Run it
 
 ```bash
 export SUPABASE_ACCESS_TOKEN=sbp_xxx
 export SUPABASE_ORG_ID=your-org
-export SUPABASE_DB_PASS='a-strong-password'
+# SUPABASE_DB_PASS optional — omit to let formae generate the password
 formae apply --mode reconcile --watch examples/full-project/main.pkl
 ```
 

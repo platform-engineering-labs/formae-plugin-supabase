@@ -9,11 +9,16 @@
 // Children reference the freshly created project via `project.res.id` — no
 // pre-existing project, no second apply.
 //
+// The initial Postgres password is a formae-managed opaque secret: if you set
+// SUPABASE_DB_PASS it's used (still opaque, never logged); otherwise formae
+// generates a strong one once and reuses it. Either way no plaintext lands in
+// the forma or in state.
+//
 // Setup:
 //   export SUPABASE_ACCESS_TOKEN=sbp_xxx
 //   export SUPABASE_ORG_ID=<org slug or id>
-//   export SUPABASE_DB_PASS=<initial postgres password, >= 8 chars>
-//   export OPENAI_API_KEY=sk-...        # optional, demo fallback otherwise
+//   export SUPABASE_DB_PASS=<postgres password, >= 8 chars>   # optional, formae generates one if unset
+//   export OPENAI_API_KEY=sk-...                              # optional, demo fallback otherwise
 //   formae apply --mode reconcile --watch examples/full-project/main.pkl
 //
 // Project create is async (~2 min to ACTIVE_HEALTHY); --watch shows progress.
@@ -22,11 +27,12 @@
 
 amends "@formae/forma.pkl"
 import "@formae/formae.pkl"
+import "@formae/ext/random.pkl"
 import "@supabase/supabase.pkl"
 
 local orgId      = read("env:SUPABASE_ORG_ID")
-local demoDbPass = read("env:SUPABASE_DB_PASS")
 local openaiKey  = read?("env:OPENAI_API_KEY") ?? "sk-demo-not-a-real-key"
+local userDbPass = read?("env:SUPABASE_DB_PASS")
 
 forma {
   new formae.Stack {
@@ -46,7 +52,10 @@ forma {
     name = "formae-full-demo"
     organizationId = orgId
     region = "us-east-1"
-    dbPass = demoDbPass
+    // Opaque (never displayed) either way. Use the env value if set, else let
+    // formae generate one once (.setOnce) and reuse it on later applies.
+    dbPass = if (userDbPass != null) formae.value(userDbPass).opaque
+             else formae.value(random.password(16, false)).opaque.setOnce
     plan = "free"
     auth = new supabase.ProjectAuthConfig {
       settings = new Mapping {
