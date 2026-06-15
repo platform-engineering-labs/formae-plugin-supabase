@@ -295,17 +295,25 @@ class EdgeFunction extends formae.Resource {
 }
 
 // =============================================================================
-// SUPABASE::Functions::Secret
+// SUPABASE::Functions::Secrets
 // =============================================================================
 
-/// One Edge Function secret. Values are write-only.
+/// All Edge Function secrets for a project, as one resource.
+///
+/// The Supabase secrets endpoint is a single bulk bag per project — there is
+/// no per-secret API. Modelling the whole bag as one resource means every
+/// mutation is a single atomic bulk call, which avoids the lost-update race
+/// that per-secret resources hit when applied concurrently (each concurrent
+/// single-item write does a read-modify-write on the shared bag and the last
+/// writer wins). One Secrets resource per project; identifier is the project
+/// ref.
 @formae.ResourceHint {
-    type = "SUPABASE::Functions::Secret"
-    identifier = "$.name"
+    type = "SUPABASE::Functions::Secrets"
+    identifier = "$.projectRef"
     discoverable = true
 }
-class Secret extends formae.Resource {
-    fixed hidden type: String = "SUPABASE::Functions::Secret"
+class Secrets extends formae.Resource {
+    fixed hidden type: String = "SUPABASE::Functions::Secrets"
 
     /// Parent project. Immutable.
     @formae.FieldHint {
@@ -314,21 +322,16 @@ class Secret extends formae.Resource {
     }
     projectRef: String|formae.Resolvable
 
-    /// Secret name. Must not start with SUPABASE_. Immutable.
-    @formae.FieldHint {
-        createOnly = true
-        requiredOnCreate = true
-    }
-    name: String
-
-    /// Secret value. Send-only — never returned by the API. Nullable on
-    /// purpose: the extractor marks non-nullable, no-default fields as
-    /// `Required`, and discovery rejects resources whose `Required` fields
-    /// are absent from Read. A non-nullable `value` makes existing secrets
-    /// undiscoverable. Create() enforces presence in Go.
+    /// Secret name → value map. Names must not start with SUPABASE_ (reserved
+    /// by the platform). Values are send-only — never returned by the API, so
+    /// drift on a value cannot be detected. Nullable on purpose: the extractor
+    /// marks non-nullable, no-default fields as `Required`, and discovery
+    /// rejects resources whose `Required` fields are absent from Read. Since
+    /// the API never echoes values, a non-nullable `values` makes existing
+    /// secret bags undiscoverable. Create() enforces presence in Go.
     @formae.FieldHint {
         writeOnly = true
     }
-    value: String?
+    values: Mapping<String, String>?
 }
 

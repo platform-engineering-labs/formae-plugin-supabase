@@ -35,18 +35,16 @@ forma {
     config = new supabase.Config {}
   }
 
-  new supabase.Secret {
-    label = "openai-key"
+  // All of a project's edge-function secrets live in one bag resource — the
+  // Supabase API has no per-secret endpoint, so one Secrets resource maps to
+  // one atomic bulk write.
+  new supabase.Secrets {
+    label = "edge-secrets"
     projectRef = targetProjectRef
-    name = "OPENAI_API_KEY"
-    value = openaiKey
-  }
-
-  new supabase.Secret {
-    label = "webhook-signing-secret"
-    projectRef = targetProjectRef
-    name = "WEBHOOK_SECRET"
-    value = webhookSecret
+    values {
+      ["OPENAI_API_KEY"] = openaiKey
+      ["WEBHOOK_SECRET"] = webhookSecret
+    }
   }
 
   // Webhook handler that uses both secrets. verify_jwt = false because

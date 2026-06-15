@@ -23,7 +23,7 @@ func TestAllResourceTypesRegistered(t *testing.T) {
 		"SUPABASE::Platform::Branch",
 		"SUPABASE::Auth::APIKey",
 		"SUPABASE::Functions::EdgeFunction",
-		"SUPABASE::Functions::Secret",
+		"SUPABASE::Functions::Secrets",
 	}
 	for _, rt := range want {
 		if !registry.Has(rt) {

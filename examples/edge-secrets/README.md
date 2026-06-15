@@ -1,8 +1,13 @@
 # Edge function + secrets
 
 The everyday deploy unit: an edge function and the secrets it reads, managed
-together. Two `Functions::Secret`s and a webhook-handler `EdgeFunction`
-consuming them via `Deno.env.get()`, deployed to an existing project.
+together. One `Functions::Secrets` bag (two secrets in its `values` map) and a
+webhook-handler `EdgeFunction` consuming them via `Deno.env.get()`, deployed to
+an existing project.
+
+A project's secrets are a single bag server-side — the API has no per-secret
+endpoint — so all of them live in one `Secrets` resource and every change is
+one atomic bulk write.
 
 ## Prerequisites
 
@@ -35,7 +40,9 @@ curl -X POST https://$SUPABASE_PROJECT_REF.supabase.co/functions/v1/webhook-hand
 - **Secret names must not start with `SUPABASE_`** — the API reserves that
   prefix.
 - **Values are write-only.** The API never returns secret values, so formae
-  detects drift on secret *existence* but not on the value itself. Rotating
-  a value: change it in the forma and reconcile — formae re-sends it.
+  can't detect drift on a value. Rotating a value: change it in the `values`
+  map and reconcile — formae re-sends the whole bag in one POST.
+- **Removing a key** from the `values` map deletes that secret on the next
+  reconcile; the bag is the full declaration of the project's managed secrets.
 - Function `body` is also never returned by the API; the deployed source is
   tracked by formae's own state, not by reading it back.

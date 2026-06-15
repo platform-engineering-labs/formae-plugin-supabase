@@ -84,13 +84,15 @@ forma {
     description = "Server-side key for trusted services"
   }
 
-  // Edge-function secret. Value is write-only: the API never returns it,
-  // so formae cannot detect drift on the value itself.
-  new supabase.Secret {
-    label = "openai-key"
+  // Edge-function secrets bag (one resource per project). Values are
+  // write-only: the API never returns them, so formae cannot detect drift on
+  // the values themselves.
+  new supabase.Secrets {
+    label = "edge-secrets"
     projectRef = project.res.id
-    name = "OPENAI_API_KEY"
-    value = openaiKey
+    values {
+      ["OPENAI_API_KEY"] = openaiKey
+    }
   }
 
   // Edge function that proves the secret is wired through.

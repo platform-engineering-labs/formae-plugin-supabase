@@ -2,7 +2,7 @@
 
 The whole plugin surface in one apply: a Supabase **Project** (with nested
 auth, Data API, and Postgres configuration), two **API keys**, an
-edge-function **Secret**, and an **Edge Function** that reads it.
+edge-function **Secrets** bag, and an **Edge Function** that reads it.
 
 Child resources reference the freshly created project through
 `project.res.id` — formae resolves the generated project ref at apply

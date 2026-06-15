@@ -120,7 +120,7 @@ func (p *Plugin) LabelConfig() model.LabelConfig {
 		DefaultQuery: "$.name",
 		ResourceOverrides: map[string]string{
 			"SUPABASE::Functions::EdgeFunction": "$.slug",
-			"SUPABASE::Functions::Secret":       "$.name",
+			"SUPABASE::Functions::Secrets":      "$.projectRef",
 		},
 	}
 }
