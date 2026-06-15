@@ -60,6 +60,22 @@ type SecretsProperties struct {
 // reservedPrefix marks secret names the platform injects and manages itself.
 const reservedPrefix = "SUPABASE_"
 
+// nativeIDChild is the constant second segment of the bag's native id. The id
+// is "{projectRef}/secrets" rather than the bare ref so it never collides with
+// the SUPABASE::Platform::Project resource, whose native id IS the bare ref —
+// formae keys resources by (target, nativeID) regardless of type, and a bare
+// ref would make the bag a duplicate of its own project and get deleted.
+const nativeIDChild = "secrets"
+
+// projectFromNativeID extracts the project ref from a "{ref}/secrets" id,
+// tolerating a bare ref for forward/backward compatibility.
+func projectFromNativeID(nativeID string) string {
+	if parent, _, err := prov.ParseTwoPart(nativeID); err == nil {
+		return parent
+	}
+	return nativeID
+}
+
 // upsertBody turns a name→value map into the sorted bulk-POST payload.
 func upsertBody(values map[string]string) []map[string]string {
 	names := make([]string, 0, len(values))
@@ -98,13 +114,13 @@ func (s *Secrets) Create(ctx context.Context, req *resource.CreateRequest) (*res
 		ProgressResult: &resource.ProgressResult{
 			Operation:       resource.OperationCreate,
 			OperationStatus: resource.OperationStatusSuccess,
-			NativeID:        p.ProjectRef,
+			NativeID:        prov.JoinTwoPart(p.ProjectRef, nativeIDChild),
 		},
 	}, nil
 }
 
 func (s *Secrets) Read(ctx context.Context, req *resource.ReadRequest) (*resource.ReadResult, error) {
-	project := req.NativeID
+	project := projectFromNativeID(req.NativeID)
 	var secrets []struct {
 		Name string `json:"name"`
 	}
@@ -132,7 +148,7 @@ func (s *Secrets) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 }
 
 func (s *Secrets) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {
-	project := req.NativeID
+	project := projectFromNativeID(req.NativeID)
 	var prior, desired SecretsProperties
 	if err := json.Unmarshal(req.PriorProperties, &prior); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
@@ -177,7 +193,7 @@ func (s *Secrets) Update(ctx context.Context, req *resource.UpdateRequest) (*res
 }
 
 func (s *Secrets) Delete(ctx context.Context, req *resource.DeleteRequest) (*resource.DeleteResult, error) {
-	project := req.NativeID
+	project := projectFromNativeID(req.NativeID)
 	var secrets []struct {
 		Name string `json:"name"`
 	}
@@ -216,8 +232,11 @@ func (s *Secrets) Status(ctx context.Context, req *resource.StatusRequest) (*res
 }
 
 func (s *Secrets) List(ctx context.Context, _ *resource.ListRequest) (*resource.ListResult, error) {
-	// One bag per project; the bag exists whenever the project does, so the
-	// native id is just the project ref.
-	ids := append([]string{}, prov.ProjectIDs(ctx, s.Client, s.ProjectScope)...)
+	// One bag per project; native id is "{ref}/secrets" (distinct from the
+	// Project resource's bare-ref native id).
+	ids := make([]string, 0)
+	for _, projectID := range prov.ProjectIDs(ctx, s.Client, s.ProjectScope) {
+		ids = append(ids, prov.JoinTwoPart(projectID, nativeIDChild))
+	}
 	return &resource.ListResult{NativeIDs: ids}, nil
 }

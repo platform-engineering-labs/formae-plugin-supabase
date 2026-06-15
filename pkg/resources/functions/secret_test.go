@@ -20,6 +20,11 @@ import (
 // as one resource (SUPABASE::Functions::Secrets) holding all names→values, so
 // every mutation is a single atomic bulk call — no concurrent read-modify-write
 // race between sibling secret resources.
+//
+// The bag's native id is "{projectRef}/secrets", NOT the bare project ref: the
+// Project resource's native id is the bare ref ($.id), and formae keys
+// resources by (target, nativeID) regardless of type. A bare-ref bag would
+// collide with its own project and get deleted as a duplicate during sync.
 
 func TestSecrets_Create_PostsAllAtOnce(t *testing.T) {
 	var got []map[string]string
@@ -41,12 +46,26 @@ func TestSecrets_Create_PostsAllAtOnce(t *testing.T) {
 	if res.ProgressResult.OperationStatus != resource.OperationStatusSuccess {
 		t.Fatalf("status = %v", res.ProgressResult.OperationStatus)
 	}
-	if res.ProgressResult.NativeID != "p1" {
-		t.Fatalf("NativeID = %q, want p1", res.ProgressResult.NativeID)
+	// Distinct from the Project's native id ("p1") to avoid the collision.
+	if res.ProgressResult.NativeID != "p1/secrets" {
+		t.Fatalf("NativeID = %q, want p1/secrets", res.ProgressResult.NativeID)
 	}
 	// One POST carrying both secrets, sorted by name for determinism.
 	if len(got) != 2 || got[0]["name"] != "OPENAI" || got[1]["name"] != "WEBHOOK" {
 		t.Fatalf("body = %v, want [OPENAI, WEBHOOK]", got)
+	}
+}
+
+func TestSecrets_Create_NativeIDNotBareProjectRef(t *testing.T) {
+	// Regression: the bag must never reuse the bare project ref as its native
+	// id, or it collides with the SUPABASE::Platform::Project resource.
+	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) { w.WriteHeader(201) })
+	defer srv.Close()
+	s := &Secrets{Client: c}
+	props, _ := json.Marshal(SecretsProperties{ProjectRef: "p1", Values: map[string]string{"A": "1"}})
+	res, _ := s.Create(context.Background(), &resource.CreateRequest{Properties: props})
+	if res.ProgressResult.NativeID == "p1" {
+		t.Fatalf("NativeID == bare project ref %q — collides with Project", res.ProgressResult.NativeID)
 	}
 }
 
@@ -77,11 +96,14 @@ func TestSecrets_Create_RejectsEmpty(t *testing.T) {
 
 func TestSecrets_Read_ReturnsProjectRef(t *testing.T) {
 	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/projects/p1/secrets" {
+			t.Errorf("path = %q, want /v1/projects/p1/secrets", r.URL.Path)
+		}
 		_, _ = io.WriteString(w, `[{"name":"OPENAI"},{"name":"SUPABASE_URL"}]`)
 	})
 	defer srv.Close()
 	s := &Secrets{Client: c}
-	res, _ := s.Read(context.Background(), &resource.ReadRequest{NativeID: "p1"})
+	res, _ := s.Read(context.Background(), &resource.ReadRequest{NativeID: "p1/secrets"})
 	if res.ErrorCode != "" {
 		t.Fatalf("ErrorCode = %v", res.ErrorCode)
 	}
@@ -101,7 +123,7 @@ func TestSecrets_Read_NotFoundWhenEmpty(t *testing.T) {
 	})
 	defer srv.Close()
 	s := &Secrets{Client: c}
-	res, _ := s.Read(context.Background(), &resource.ReadRequest{NativeID: "p1"})
+	res, _ := s.Read(context.Background(), &resource.ReadRequest{NativeID: "p1/secrets"})
 	if res.ErrorCode != resource.OperationErrorCodeNotFound {
 		t.Fatalf("ErrorCode = %v, want NotFound", res.ErrorCode)
 	}
@@ -111,6 +133,9 @@ func TestSecrets_Update_UpsertsAndDeletesRemoved(t *testing.T) {
 	var posted []map[string]string
 	var deleted []string
 	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/projects/p1/secrets" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
 		b, _ := io.ReadAll(r.Body)
 		switch r.Method {
 		case "POST":
@@ -127,7 +152,7 @@ func TestSecrets_Update_UpsertsAndDeletesRemoved(t *testing.T) {
 	prior, _ := json.Marshal(SecretsProperties{ProjectRef: "p1", Values: map[string]string{"A": "1", "B": "2"}})
 	desired, _ := json.Marshal(SecretsProperties{ProjectRef: "p1", Values: map[string]string{"A": "1-new", "C": "3"}})
 	res, _ := s.Update(context.Background(), &resource.UpdateRequest{
-		NativeID:          "p1",
+		NativeID:          "p1/secrets",
 		PriorProperties:   prior,
 		DesiredProperties: desired,
 	})
@@ -147,6 +172,9 @@ func TestSecrets_Update_UpsertsAndDeletesRemoved(t *testing.T) {
 func TestSecrets_Delete_RemovesAllNonReserved(t *testing.T) {
 	var deleted []string
 	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
+		if r.URL.Path != "/v1/projects/p1/secrets" {
+			t.Errorf("path = %q", r.URL.Path)
+		}
 		switch r.Method {
 		case "GET":
 			_, _ = io.WriteString(w, `[{"name":"SUPABASE_URL"},{"name":"FOO"},{"name":"BAR"}]`)
@@ -160,7 +188,7 @@ func TestSecrets_Delete_RemovesAllNonReserved(t *testing.T) {
 	})
 	defer srv.Close()
 	s := &Secrets{Client: c}
-	res, _ := s.Delete(context.Background(), &resource.DeleteRequest{NativeID: "p1"})
+	res, _ := s.Delete(context.Background(), &resource.DeleteRequest{NativeID: "p1/secrets"})
 	if res.ProgressResult.OperationStatus != resource.OperationStatusSuccess {
 		t.Fatalf("status = %v", res.ProgressResult.OperationStatus)
 	}
@@ -181,8 +209,9 @@ func TestSecrets_List_OnePerProject(t *testing.T) {
 	defer srv.Close()
 	s := &Secrets{Client: c}
 	res, _ := s.List(context.Background(), &resource.ListRequest{})
-	// One Secrets bag per project — NativeID is the bare project ref.
-	if len(res.NativeIDs) != 2 || res.NativeIDs[0] != "p1" || res.NativeIDs[1] != "p2" {
-		t.Fatalf("NativeIDs = %v, want [p1, p2]", res.NativeIDs)
+	// One Secrets bag per project, native id "{ref}/secrets" — distinct from
+	// the Project's bare-ref native id.
+	if len(res.NativeIDs) != 2 || res.NativeIDs[0] != "p1/secrets" || res.NativeIDs[1] != "p2/secrets" {
+		t.Fatalf("NativeIDs = %v, want [p1/secrets, p2/secrets]", res.NativeIDs)
 	}
 }
