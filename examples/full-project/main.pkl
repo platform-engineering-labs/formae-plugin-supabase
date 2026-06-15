@@ -1,6 +1,6 @@
 // © 2026 Platform Engineering Labs Inc.
 //
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 //
 // Full project from scratch — the whole plugin surface in one apply.
 //

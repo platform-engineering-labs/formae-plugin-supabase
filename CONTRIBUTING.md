@@ -69,17 +69,15 @@ It runs before and after conformance tests and should be idempotent.
 
 ## Publishing to the Hub
 
-The formae Hub accepts plugins under one of these SPDX licenses:
+This plugin uses `FSL-1.1-ALv2` (Functional Source License, ALv2 Future
+License), matching the other Platform Engineering cloud plugins. The Hub
+also accepts `Apache-2.0`, `BSD-3-Clause`, `MIT`, and `MPL-2.0`.
 
-- `Apache-2.0`
-- `BSD-3-Clause`
-- `MIT`
-- `MPL-2.0`
-
-Set the `license` field in `formae-plugin.pkl` to the matching identifier
-and copy the corresponding file from `licenses/` to `LICENSE`. Plugins
-under any other license can still be built and used locally, but the
-Hub registration step will reject them.
+The Hub matches the **`LICENSE` file body** against canonical license text,
+so `LICENSE` must be the verbatim license — not a reflowed or truncated copy.
+Set the `license` field in `formae-plugin.pkl` to the matching SPDX identifier
+and keep `LICENSE` in sync. Plugins under any other license can still be built
+and used locally, but the Hub registration step will reject them.
 
 For the full publishing flow, see the
 [Plugin SDK Documentation](https://docs.formae.io/plugin-sdk).

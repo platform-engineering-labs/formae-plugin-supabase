@@ -1,6 +1,6 @@
 // © 2026 Platform Engineering Labs Inc.
 //
-// SPDX-License-Identifier: Apache-2.0
+// SPDX-License-Identifier: FSL-1.1-ALv2
 
 // Package prov defines the Provisioner interface that every Supabase resource
 // type implements, plus shared helpers (native-id parsing, error mapping,
