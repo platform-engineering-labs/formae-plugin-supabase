@@ -133,4 +133,5 @@ make conformance-test TEST=apikey      # Scope to one resource type
 
 ## License
 
-Apache-2.0. See [LICENSE](LICENSE) and [CHANGELOG.md](CHANGELOG.md).
+This plugin is licensed under the [Functional Source License, Version 1.1, ALv2
+Future License (FSL-1.1-ALv2)](LICENSE). See also [CHANGELOG.md](CHANGELOG.md).

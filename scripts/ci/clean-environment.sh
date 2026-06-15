@@ -1,6 +1,6 @@
 #!/bin/bash
 # © 2026 Platform Engineering Labs Inc.
-# SPDX-License-Identifier: Apache-2.0
+# SPDX-License-Identifier: FSL-1.1-ALv2
 #
 # Clean Environment Hook for the Supabase plugin.
 #
