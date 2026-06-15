@@ -78,7 +78,6 @@ Each example is a self-contained Pkl project — `cd` in or pass the path to
 | [`edge-secrets/`](examples/edge-secrets/) | Edge function + the write-only secrets it reads | `SUPABASE_PROJECT_REF` |
 | [`basic/`](examples/basic/) | Smallest possible forma: one edge function | `SUPABASE_PROJECT_REF` |
 | [`discover/`](examples/discover/) | Bare target; agent discovers every project the PAT can see | — |
-| [`import-demo/`](examples/import-demo/) | `formae extract`: adopt an existing project as PKL | `SUPABASE_ACCESS_TOKEN` only |
 
 All examples additionally require `SUPABASE_ACCESS_TOKEN`.
 

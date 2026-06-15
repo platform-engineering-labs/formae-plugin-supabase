@@ -62,8 +62,6 @@ NetworkRestriction CRUD, separate `*Settings` singletons).
 - `examples/k8s-supabase/` — cross-plugin demo running a real Next.js
   Supabase Starter Kit in a kind cluster, end-to-end verified against
   live Supabase Auth `/settings`.
-- `examples/import-demo/` — `formae extract` round-trip demo against an
-  existing Supabase project.
 
 ### Known limitations
 
