@@ -116,10 +116,19 @@ func (s *Secrets) Read(ctx context.Context, req *resource.ReadRequest) (*resourc
 		}
 		return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: supatransport.ClassifyError(err)}, nil
 	}
-	// Values are write-only — the API never returns them, so we report only the
-	// project ref. The framework does not diff write-only fields.
-	out := prov.MustMarshal(SecretsProperties{ProjectRef: project})
-	return &resource.ReadResult{ResourceType: req.ResourceType, Properties: string(out)}, nil
+	// The secrets endpoint stays 200 (with reserved SUPABASE_* entries) even
+	// after every managed secret is deleted out-of-band. The bag exists only
+	// while it holds at least one managed (non-reserved) name; otherwise report
+	// NotFound so formae clears it from inventory.
+	for _, sec := range secrets {
+		if sec.Name != "" && !strings.HasPrefix(sec.Name, reservedPrefix) {
+			// Values are write-only — the API never returns them, so we report
+			// only the project ref. The framework does not diff write-only fields.
+			out := prov.MustMarshal(SecretsProperties{ProjectRef: project})
+			return &resource.ReadResult{ResourceType: req.ResourceType, Properties: string(out)}, nil
+		}
+	}
+	return &resource.ReadResult{ResourceType: req.ResourceType, ErrorCode: resource.OperationErrorCodeNotFound}, nil
 }
 
 func (s *Secrets) Update(ctx context.Context, req *resource.UpdateRequest) (*resource.UpdateResult, error) {

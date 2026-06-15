@@ -92,6 +92,21 @@ func TestSecrets_Read_ReturnsProjectRef(t *testing.T) {
 	}
 }
 
+func TestSecrets_Read_NotFoundWhenEmpty(t *testing.T) {
+	// After an out-of-band delete the project's secrets endpoint still returns
+	// 200 with only reserved SUPABASE_* entries. With no managed secrets left,
+	// the bag must read as NotFound so formae clears it from inventory.
+	c, srv := clientFor(t, func(w http.ResponseWriter, r *http.Request) {
+		_, _ = io.WriteString(w, `[{"name":"SUPABASE_URL"},{"name":"SUPABASE_ANON_KEY"}]`)
+	})
+	defer srv.Close()
+	s := &Secrets{Client: c}
+	res, _ := s.Read(context.Background(), &resource.ReadRequest{NativeID: "p1"})
+	if res.ErrorCode != resource.OperationErrorCodeNotFound {
+		t.Fatalf("ErrorCode = %v, want NotFound", res.ErrorCode)
+	}
+}
+
 func TestSecrets_Update_UpsertsAndDeletesRemoved(t *testing.T) {
 	var posted []map[string]string
 	var deleted []string
