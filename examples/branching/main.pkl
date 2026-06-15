@@ -1,0 +1,56 @@
+// © 2026 Platform Engineering Labs Inc.
+//
+// SPDX-License-Identifier: Apache-2.0
+//
+// Preview environments — Supabase branches as code.
+//
+// Declares two branches on an existing project: a persistent `develop`
+// branch (long-lived shared environment) and an ephemeral preview branch
+// tracking a Git feature branch. Each branch is a full Supabase stack
+// (own Postgres, auth, functions) cloned from the parent.
+//
+// NOTE: branching requires a paid Supabase plan (Pro or above) on the
+// parent project. Branch create is async — the plugin polls until the
+// branch reports FUNCTIONS_DEPLOYED / MIGRATIONS_PASSED.
+//
+// Setup:
+//   export SUPABASE_ACCESS_TOKEN=sbp_xxx
+//   export SUPABASE_PROJECT_REF=<existing paid-plan project ref>
+//   formae apply --mode reconcile --watch examples/branching/main.pkl
+
+amends "@formae/forma.pkl"
+import "@formae/formae.pkl"
+import "@supabase/supabase.pkl"
+
+local parentRef = read("env:SUPABASE_PROJECT_REF")
+
+forma {
+  new formae.Stack {
+    label = "supabase-branching"
+    description = "Persistent develop branch + ephemeral preview branch"
+  }
+
+  new formae.Target {
+    label = "supabase-target"
+    config = new supabase.Config {}
+  }
+
+  // Long-lived shared environment. `persistent = true` keeps it out of
+  // Supabase's automatic branch cleanup.
+  new supabase.Branch {
+    label = "develop-branch"
+    parentProjectRef = parentRef
+    branch_name = "develop"
+    persistent = true
+  }
+
+  // Ephemeral preview tied to a Git branch. Delete the resource (or the
+  // whole stack) when the feature merges.
+  new supabase.Branch {
+    label = "preview-feature-login"
+    parentProjectRef = parentRef
+    branch_name = "preview/feature-login"
+    git_branch = "feature/login"
+    persistent = false
+  }
+}
