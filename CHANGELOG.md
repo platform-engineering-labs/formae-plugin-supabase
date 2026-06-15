@@ -6,6 +6,18 @@ versions follow [SemVer](https://semver.org/).
 
 ## [Unreleased]
 
+### Changed
+
+- **BREAKING:** `SUPABASE::Functions::Secret` (one resource per secret name)
+  is replaced by `SUPABASE::Functions::Secrets` — one bag resource per
+  project holding a `values` name→value map, identified by `$.projectRef`.
+  The Supabase API exposes only a bulk secrets endpoint with no per-secret
+  operation; the old per-name model issued concurrent single-item writes that
+  raced on the shared bag (read-modify-write, last writer wins) and silently
+  dropped secrets during a multi-secret apply. The bag model makes every
+  mutation a single atomic bulk call. Removing a key from `values` deletes
+  that secret on reconcile.
+
 ## [0.1.0] — 2026-05-26
 
 Initial public release. 11 resource types covering the Supabase

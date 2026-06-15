@@ -24,7 +24,7 @@ asynchronous.
 | `SUPABASE::Platform::Branch` | A preview branch on a project. Async; requires a paid plan. |
 | `SUPABASE::Auth::APIKey` | A publishable or secret project API key. Referenced by other resources via `.res.apiKey`. |
 | `SUPABASE::Functions::EdgeFunction` | An Edge Function deployed from an inline JS/TS body. |
-| `SUPABASE::Functions::Secret` | An Edge Function secret — one Forma resource per secret name. Values are write-only. |
+| `SUPABASE::Functions::Secrets` | All of a project's Edge Function secrets as one bag (`values` is a name→value map). The API has no per-secret endpoint, so the whole bag is one resource and every change is one atomic bulk write. Values are write-only. |
 
 ### Nested project configuration
 
