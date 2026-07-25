@@ -104,7 +104,7 @@ class Project extends formae.Resource {
         createOnly = true
         writeOnly = true
     }
-    dbPass: (formae.Value|String)?
+    dbPass: (formae.Value|String|formae.SecretValue)?
 
     /// Pricing plan ("free", "pro", "team", "enterprise").
     @formae.FieldHint {}

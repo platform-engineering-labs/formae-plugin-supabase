@@ -17,6 +17,10 @@ versions follow [SemVer](https://semver.org/).
   dropped secrets during a multi-secret apply. The bag model makes every
   mutation a single atomic bulk call. Removing a key from `values` deletes
   that secret on reconcile.
+- `SUPABASE::Platform::Project` `dbPass` is now typed `formae.SecretValue` so its
+  value is hashed at rest end-to-end (previously stored in cleartext on the
+  read/actual-state path). Requires a formae agent on the matching release;
+  `minFormaeVersion` is bumped to 0.88.0.
 
 ## [0.1.0] — 2026-05-26
 
