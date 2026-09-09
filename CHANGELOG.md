@@ -8,9 +8,28 @@ versions follow [SemVer](https://semver.org/).
 
 ### Changed
 
+- Adopted the formae 0.89.0 secret model. `SUPABASE::Auth::APIKey` is now a
+  first-class secret resource (`formae.Secret` + `ScalarSecretResolvable`), so
+  its key material is reachable as `key.res.secretValue` — and `.json(path)` —
+  and is re-read from the Management API on every plugin call. `Project.dbPass`
+  and every `Secrets.values` entry now accept `formae.ValueSource`, so they can
+  be bound to a `PasswordGenerator`/`KeyPairGenerator` output or to another
+  resource's secret instead of a literal. `dbPass` and the new `apiKey`
+  property are hashed at rest; `Secrets.values` entries are not, because
+  formae derives opacity from a field's declared type and does not descend
+  into map value positions.
+- `APIKey.apiKey` is issued by Supabase, so `Create` rejects an authored value
+  and `Update` rejects a rewritten one rather than silently dropping it.
+- `make conformance-test VERSION=…` examples in the README and CONTRIBUTING
+  now name 0.89.0.
+- Examples: `full-project` draws its Postgres password from a
+  `formae.PasswordGenerator` (the `SUPABASE_DB_PASS` override is gone) and
+  wires the secret API key into the edge-function secret bag by reference;
+  `edge-secrets` draws its webhook signing secret from a generator rotating
+  every 30 days (the `WEBHOOK_SECRET` override is gone).
 - Target formae 0.89.0: pkl schema dependency bumped to `formae@0.89.0`,
-  SDK to `pkg/plugin v0.4.1` / `pkg/model v0.1.28` /
-  `pkg/plugin-conformance-tests v0.2.6`, and `minFormaeVersion` to `0.89.0`.
+  SDK to `pkg/plugin v0.4.2` / `pkg/model v0.1.28` /
+  `pkg/plugin-conformance-tests v0.2.7`, and `minFormaeVersion` to `0.89.0`.
   `make build` now takes `max(sdk, declared)` for `minFormaeVersion` so it
   never downgrades the declared floor (matches formae-plugin-aws).
 - **BREAKING:** `SUPABASE::Functions::Secret` (one resource per secret name)

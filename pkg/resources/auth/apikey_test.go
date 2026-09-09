@@ -66,3 +66,50 @@ func TestAPIKey_Delete_Idempotent(t *testing.T) {
 		t.Fatalf("status = %v", res.ProgressResult.OperationStatus)
 	}
 }
+
+func TestAPIKey_Create_RejectsAuthoredAPIKey(t *testing.T) {
+	c, srv := clientFor(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("Create must not call the API when apiKey is authored")
+		_, _ = io.WriteString(w, `{}`)
+	})
+	defer srv.Close()
+	a := &APIKey{Client: c}
+	props, _ := json.Marshal(APIKeyProperties{ProjectRef: "p1", Name: "ci_key", Type: "secret", APIKey: "sb_secret_x"})
+	res, _ := a.Create(context.Background(), &resource.CreateRequest{Properties: props})
+	if res.ProgressResult.OperationStatus != resource.OperationStatusFailure {
+		t.Fatalf("OperationStatus = %v, want Failed", res.ProgressResult.OperationStatus)
+	}
+}
+
+func TestAPIKey_Update_AllowsCarriedForwardAPIKey(t *testing.T) {
+	c, srv := clientFor(t, func(w http.ResponseWriter, _ *http.Request) {
+		_, _ = io.WriteString(w, `{"id":"k1","api_key":"sb_secret_x","type":"secret","name":"renamed"}`)
+	})
+	defer srv.Close()
+	a := &APIKey{Client: c}
+	prior, _ := json.Marshal(APIKeyProperties{ProjectRef: "p1", Name: "ci_key", Type: "secret", APIKey: "sb_secret_x"})
+	desired, _ := json.Marshal(APIKeyProperties{ProjectRef: "p1", Name: "renamed", Type: "secret", APIKey: "sb_secret_x"})
+	res, _ := a.Update(context.Background(), &resource.UpdateRequest{
+		NativeID: "p1/k1", PriorProperties: prior, DesiredProperties: desired,
+	})
+	if res.ProgressResult.OperationStatus != resource.OperationStatusSuccess {
+		t.Fatalf("OperationStatus = %v, want Success", res.ProgressResult.OperationStatus)
+	}
+}
+
+func TestAPIKey_Update_RejectsChangedAPIKey(t *testing.T) {
+	c, srv := clientFor(t, func(w http.ResponseWriter, _ *http.Request) {
+		t.Error("Update must not call the API when apiKey is rewritten")
+		_, _ = io.WriteString(w, `{}`)
+	})
+	defer srv.Close()
+	a := &APIKey{Client: c}
+	prior, _ := json.Marshal(APIKeyProperties{ProjectRef: "p1", Name: "ci_key", Type: "secret", APIKey: "sb_secret_old"})
+	desired, _ := json.Marshal(APIKeyProperties{ProjectRef: "p1", Name: "ci_key", Type: "secret", APIKey: "sb_secret_new"})
+	res, _ := a.Update(context.Background(), &resource.UpdateRequest{
+		NativeID: "p1/k1", PriorProperties: prior, DesiredProperties: desired,
+	})
+	if res.ProgressResult.OperationStatus != resource.OperationStatusFailure {
+		t.Fatalf("OperationStatus = %v, want Failed", res.ProgressResult.OperationStatus)
+	}
+}

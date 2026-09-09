@@ -87,6 +87,12 @@ func (a *APIKey) Create(ctx context.Context, req *resource.CreateRequest) (*reso
 	if p.ProjectRef == "" || p.Name == "" || p.Type == "" {
 		return prov.FailCreate(resource.OperationErrorCodeInvalidRequest, "projectRef, name, type are required"), nil
 	}
+	// apiKey is declared on the schema only so the property can carry Opaque
+	// (formae derives that from the field's type). Supabase issues the key
+	// material; an authored value would be silently dropped, so reject it.
+	if p.APIKey != "" {
+		return prov.FailCreate(resource.OperationErrorCodeInvalidRequest, "apiKey is issued by Supabase and cannot be set"), nil
+	}
 	body := map[string]any{"name": p.Name, "type": p.Type}
 	if p.Description != "" {
 		body["description"] = p.Description
@@ -140,9 +146,23 @@ func (a *APIKey) Update(ctx context.Context, req *resource.UpdateRequest) (*reso
 	if err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
 	}
-	var desired APIKeyProperties
+	var prior, desired APIKeyProperties
+	// Prior is only needed to tell a carried-forward key from an authored one;
+	// an absent prior is not itself an error.
+	if len(req.PriorProperties) > 0 {
+		if err := json.Unmarshal(req.PriorProperties, &prior); err != nil {
+			return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
+		}
+	}
 	if err := json.Unmarshal(req.DesiredProperties, &desired); err != nil {
 		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, err.Error()), nil
+	}
+	// Rewriting the key material is not an operation the API offers. Compared
+	// against prior rather than checked for emptiness, so a provider-defaulted
+	// value carried forward into the desired state is not mistaken for an
+	// authored one.
+	if desired.APIKey != "" && desired.APIKey != prior.APIKey {
+		return prov.FailUpdate(resource.OperationErrorCodeInvalidRequest, "apiKey is issued by Supabase and cannot be changed"), nil
 	}
 	body := map[string]any{}
 	if desired.Name != "" {

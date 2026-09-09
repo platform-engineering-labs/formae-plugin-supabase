@@ -4,16 +4,22 @@
 //
 // Edge function + its secrets — the everyday deploy unit.
 //
-// Two Functions::Secrets and one EdgeFunction consuming them via
+// Two secret bag entries and one EdgeFunction consuming them via
 // Deno.env.get(), against an existing project. Secret values are
 // write-only: the API never returns them, so formae cannot detect
 // drift on the values. Secret names must not start with SUPABASE_.
+//
+// OPENAI_API_KEY is a literal you supply. WEBHOOK_SECRET is not: it is bound
+// to a formae PasswordGenerator with a 30-day rotation cadence, so formae
+// draws the signing secret, delivers it into the bag, and turns it over on
+// schedule without anyone holding a copy. Bag entries are mutable, which is
+// what makes a cadence legal here (contrast Project.dbPass, which is
+// createOnly and must be bound to a generator with no rotation).
 //
 // Setup:
 //   export SUPABASE_ACCESS_TOKEN=sbp_xxx
 //   export SUPABASE_PROJECT_REF=<existing project ref>
 //   export OPENAI_API_KEY=sk-...      # optional, demo fallback otherwise
-//   export WEBHOOK_SECRET=whsec_...   # optional, demo fallback otherwise
 //   formae apply --mode reconcile --watch examples/edge-secrets/main.pkl
 
 amends "@formae/forma.pkl"
@@ -22,18 +28,34 @@ import "@supabase/supabase.pkl"
 
 local targetProjectRef = read("env:SUPABASE_PROJECT_REF")
 local openaiKey        = read?("env:OPENAI_API_KEY") ?? "sk-demo-not-a-real-key"
-local webhookSecret    = read?("env:WEBHOOK_SECRET") ?? "whsec-demo-not-a-real-secret"
 
 forma {
-  new formae.Stack {
+  local appStack = new formae.Stack {
     label = "supabase-edge-secrets"
     description = "Edge function plus the secrets it reads"
   }
+  appStack
 
   new formae.Target {
     label = "supabase-target"
     config = new supabase.Config {}
   }
+
+  // Draws the webhook signing secret and rotates it every 30 days. Rotation
+  // is one coordinated command: the new value lands in the bag and in
+  // everything else bound to this generator together.
+  local webhookGen = new formae.PasswordGenerator {
+    label = "webhook-signing-secret"
+    stack = appStack.res
+    length = 32
+    // Signature comparison is a plain string equality in the handler below,
+    // so keep the alphabet URL- and header-safe.
+    symbols = false
+    rotation = new formae.RotationSpec {
+      every = 30.d
+    }
+  }
+  webhookGen
 
   // All of a project's edge-function secrets live in one bag resource — the
   // Supabase API has no per-secret endpoint, so one Secrets resource maps to
@@ -43,7 +65,7 @@ forma {
     projectRef = targetProjectRef
     values {
       ["OPENAI_API_KEY"] = openaiKey
-      ["WEBHOOK_SECRET"] = webhookSecret
+      ["WEBHOOK_SECRET"] = webhookGen.gen.value
     }
   }
 
