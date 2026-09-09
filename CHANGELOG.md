@@ -8,6 +8,11 @@ versions follow [SemVer](https://semver.org/).
 
 ### Changed
 
+- Target formae 0.89.0: pkl schema dependency bumped to `formae@0.89.0`,
+  SDK to `pkg/plugin v0.4.1` / `pkg/model v0.1.28` /
+  `pkg/plugin-conformance-tests v0.2.6`, and `minFormaeVersion` to `0.89.0`.
+  `make build` now takes `max(sdk, declared)` for `minFormaeVersion` so it
+  never downgrades the declared floor (matches formae-plugin-aws).
 - **BREAKING:** `SUPABASE::Functions::Secret` (one resource per secret name)
   is replaced by `SUPABASE::Functions::Secrets` — one bag resource per
   project holding a `values` name→value map, identified by `$.projectRef`.
