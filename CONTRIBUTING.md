@@ -61,7 +61,7 @@ between runs.
 
 ```bash
 make conformance-test                  # Latest formae version
-make conformance-test VERSION=0.80.0   # Specific version
+make conformance-test VERSION=0.89.0   # Specific version
 ```
 
 The `scripts/ci/clean-environment.sh` script cleans up test resources.

@@ -97,14 +97,26 @@ class Project extends formae.Resource {
     /// password, a non-nullable `dbPass` makes every existing project
     /// undiscoverable. Create() enforces presence in Go instead.
     ///
-    /// Accepts a `formae.Value` so the password can be a formae-managed secret
-    /// (e.g. `formae.value(random.password(16, false)).opaque.setOnce`); formae
-    /// resolves it to a plain string before the plugin sees it.
+    /// Accepts anything formae can supply a value from: a literal, a recorded
+    /// `formae.Value`, a reference to another resource's secret
+    /// (`secret.res.secretValue`), or a generator output
+    /// (`pwGen.gen.value` from a `formae.PasswordGenerator`). Binding a
+    /// generator without a `rotation` draws the password once and never
+    /// changes it — the replacement for minting one at eval time and pinning
+    /// it with `setOnce`. Formae resolves the binding to a plain string
+    /// before the plugin sees it.
+    ///
+    /// Naming `formae.ValueSource` is also what marks the field opaque, so it
+    /// is hashed at rest and never rendered in a plan however the author
+    /// supplied it — the schema builder derives `Opaque` from the declared
+    /// type and ignores an authored `opaque` hint. `createOnly`, so do not
+    /// attach a rotation cadence to a generator bound here: rotating an
+    /// immutable field would replace the project.
     @formae.FieldHint {
         createOnly = true
         writeOnly = true
     }
-    dbPass: (formae.Value|String)?
+    dbPass: (String|formae.ValueSource)?
 
     /// Pricing plan ("free", "pro", "team", "enterprise").
     @formae.FieldHint {}
@@ -209,8 +221,12 @@ class Branch extends formae.Resource {
 /// Resolvable handle for `SUPABASE::Auth::APIKey` outputs. Reference
 /// these from other resources to wire credentials across plugins, e.g.
 ///   stringData["NEXT_PUBLIC_SUPABASE_ANON_KEY"] = anonKey.res.apiKey
-open class APIKeyResolvable extends formae.Resolvable {
+open class APIKeyResolvable extends formae.ScalarSecretResolvable {
     hidden type = "SUPABASE::Auth::APIKey"
+
+    /// The key material is a scalar secret, so `key.res.secretValue` (and
+    /// `.json(path)` for a JSON-shaped key) resolve against `apiKey`.
+    hidden valueProperty = "apiKey"
 
     hidden id:     APIKeyResolvable = (this) { property = "id" }
     hidden apiKey: APIKeyResolvable = (this) { property = "apiKey" }
@@ -223,8 +239,14 @@ open class APIKeyResolvable extends formae.Resolvable {
     identifier = "$.id"
     discoverable = true
 }
-class APIKey extends formae.Resource {
+class APIKey extends formae.Secret {
     fixed hidden type: String = "SUPABASE::Auth::APIKey"
+
+    /// The secret value of this resource is its key material. Consumers
+    /// reference it as `key.res.secretValue`; the agent re-reads it from the
+    /// Management API on every plugin call, so a key rotated out of band
+    /// takes effect without restarting the agent.
+    hidden valueProperty = "apiKey"
 
     local parent = this
     hidden res: APIKeyResolvable = new {
@@ -253,6 +275,19 @@ class APIKey extends formae.Resource {
     /// Optional description.
     @formae.FieldHint {}
     description: String?
+
+    /// The key material, issued by Supabase — never authored. Declared so the
+    /// property carries a hint at all: the schema builder derives `Opaque`
+    /// from the declared type, so naming `formae.SecretValue` in the union is
+    /// what makes the agent hash the key at rest and keep it out of plans (an
+    /// authored `opaque` hint is overwritten). `hasProviderDefault` keeps the
+    /// provider-populated value from reading as drift against a forma that
+    /// correctly does not set it. `Read` returns it on every call via
+    /// `?reveal=true`, which is what makes `key.res.secretValue` resolve live.
+    @formae.FieldHint {
+        hasProviderDefault = true
+    }
+    apiKey: (String|formae.SecretValue)?
 }
 
 // =============================================================================
@@ -333,9 +368,23 @@ class Secrets extends formae.Resource {
     /// rejects resources whose `Required` fields are absent from Read. Since
     /// the API never echoes values, a non-nullable `values` makes existing
     /// secret bags undiscoverable. Create() enforces presence in Go.
+    ///
+    /// Each entry accepts anything formae can supply a value from, so an entry
+    /// can be a generator output (`whGen.gen.value`) or a reference to another
+    /// resource's secret (`key.res.secretValue`) instead of a literal. Bag
+    /// entries are mutable, so a generator bound here may carry a `rotation`
+    /// cadence: formae then moves the secret and everything referencing it
+    /// together, unattended.
+    ///
+    /// Not opaque, and it cannot be: `Opaque` is derived from the declared
+    /// type, and formae 0.89.0's detector does not descend into map value
+    /// positions ("Nested/list/map positions are deferred — first cut only"),
+    /// so entry values are stored unhashed in agent state. `writeOnly` keeps
+    /// them out of drift detection but is not hashing. Prefer binding entries
+    /// to a generator or a secret reference over pasting literals here.
     @formae.FieldHint {
         writeOnly = true
     }
-    values: Mapping<String, String>?
+    values: Mapping<String, (String|formae.ValueSource)>?
 }
 
