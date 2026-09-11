@@ -5,7 +5,7 @@ go 1.26.0
 require (
 	github.com/platform-engineering-labs/formae/pkg/model v0.1.23
 	github.com/platform-engineering-labs/formae/pkg/plugin v0.4.1
-	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.4
+	github.com/platform-engineering-labs/formae/pkg/plugin-conformance-tests v0.2.6
 )
 
 require (
