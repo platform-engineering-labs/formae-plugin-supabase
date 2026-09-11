@@ -1,0 +1,22 @@
+// PklProject for the edge-k8s demo forma.
+//
+// supabase  — sibling schema in this repo
+// k8s       — sibling repo (formae-plugin-k8s checked out next to this one)
+// formae    — public hub
+//
+// If your formae-plugin-k8s lives elsewhere, edit the k8s line below
+// to point at it (the .../schema/pkl/main/PklProject inside that repo)
+// or at the installed copy under ~/.pel/formae/plugins/k8s/<ver>/
+// schema/pkl/PklProject (then version-prefix the @k8s/v1.xx/... imports
+// in forma.pkl).
+
+amends "pkl:Project"
+
+dependencies {
+  ["supabase"] = import("../../schema/pkl/PklProject")
+  ["k8s"]      = import("../../../formae-plugin-k8s/schema/pkl/main/PklProject")
+
+  ["formae"] {
+    uri = "package://hub.platform.engineering/plugins/pkl/schema/pkl/formae/formae@0.84.0"
+  }
+}
