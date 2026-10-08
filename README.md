@@ -1,7 +1,7 @@
 # Supabase Plugin for formae
 
 [![CI](https://github.com/platform-engineering-labs/formae-plugin-supabase/actions/workflows/ci.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-supabase/actions/workflows/ci.yml)
-[![Nightly](https://github.com/platform-engineering-labs/formae-plugin-supabase/actions/workflows/nightly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-supabase/actions/workflows/nightly.yml)
+[![Monthly](https://github.com/platform-engineering-labs/formae-plugin-supabase/actions/workflows/monthly.yml/badge.svg?branch=main)](https://github.com/platform-engineering-labs/formae-plugin-supabase/actions/workflows/monthly.yml)
 
 A formae plugin for managing [Supabase](https://supabase.com/) resources via the
 Supabase Management API (`https://api.supabase.com`).
